@@ -46,6 +46,7 @@ from _typing import (
     ParamSpecKwargs,
     TypeAliasType,
     Generic,
+    Intersection,
     Union,
     NoDefault,
 )
@@ -61,6 +62,7 @@ __all__ = [
     'Final',
     'ForwardRef',
     'Generic',
+    'Intersection',
     'Literal',
     'Optional',
     'ParamSpec',
@@ -2435,7 +2437,7 @@ def get_origin(tp):
         return tp.__origin__
     if tp is Generic:
         return Generic
-    if isinstance(tp, Union):
+    if isinstance(tp, (Intersection, Union)):
         return Union
     return None
 
@@ -2461,7 +2463,7 @@ def get_args(tp):
         if _should_unflatten_callable_args(tp, res):
             res = (list(res[:-1]), res[-1])
         return res
-    if isinstance(tp, Union):
+    if isinstance(tp, (Intersection, Union)):
         return tp.__args__
     return ()
 

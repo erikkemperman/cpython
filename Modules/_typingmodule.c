@@ -7,6 +7,7 @@
 #include "Python.h"
 #include "internal/pycore_interp.h"
 #include "internal/pycore_typevarobject.h"
+#include "internal/pycore_intersectionobject.h"  // _PyIntersection_Type
 #include "internal/pycore_unionobject.h"  // _PyUnion_Type
 #include "pycore_pystate.h"       // _PyInterpreterState_GET()
 #include "clinic/_typingmodule.c.h"
@@ -62,6 +63,9 @@ _typing_exec(PyObject *m)
     EXPORT_TYPE("Generic", generic_type);
 #undef EXPORT_TYPE
     if (PyModule_AddObjectRef(m, "TypeAliasType", (PyObject *)&_PyTypeAlias_Type) < 0) {
+        return -1;
+    }
+    if (PyModule_AddObjectRef(m, "Intersection", (PyObject *)&_PyIntersection_Type) < 0) {
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Union", (PyObject *)&_PyUnion_Type) < 0) {

@@ -27,6 +27,7 @@ class Format(enum.IntEnum):
     STRING = 4
 
 
+_Intersection = None
 _Union = None
 _sentinel = object()
 
@@ -244,6 +245,18 @@ class ForwardRef:
 
     def __hash__(self):
         return hash((self.__forward_arg__, self.__forward_module__))
+
+    def __and__(self, other):
+        global _Intersection
+        if _Intersection is None:
+            from typing import Intersection as _Intersection
+        return _Intersection[self, other]
+
+    def __rand__(self, other):
+        global _Intersection
+        if _Intersection is None:
+            from typing import Intersection as _Intersection
+        return _Intersection[other, self]
 
     def __or__(self, other):
         global _Union
