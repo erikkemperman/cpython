@@ -52,6 +52,7 @@ __all__ = [
     'Final',
     'ForwardRef',
     'Generic',
+    'Intersection',
     'Literal',
     'Optional',
     'ParamSpec',
@@ -384,7 +385,7 @@ def _remove_dups_flatten(parameters):
     # Flatten out Union[Union[...], ...].
     params = []
     for p in parameters:
-        if isinstance(p, (_UnionGenericAlias, types.UnionType)):
+        if isinstance(p, (_UnionGenericAlias, (types.UnionType, types.IntersectionType))):
             params.extend(p.__args__)
         else:
             params.append(p)
@@ -472,7 +473,7 @@ def _eval_type(t, globalns, localns, type_params=_sentinel, *, recursive_guard=f
         type_params = ()
     if isinstance(t, ForwardRef):
         return t._evaluate(globalns, localns, type_params, recursive_guard=recursive_guard)
-    if isinstance(t, (_GenericAlias, GenericAlias, types.UnionType)):
+    if isinstance(t, (_GenericAlias, GenericAlias, types.UnionType, types.IntersectionType)):
         if isinstance(t, GenericAlias):
             args = tuple(
                 ForwardRef(arg) if isinstance(arg, str) else arg
@@ -498,6 +499,8 @@ def _eval_type(t, globalns, localns, type_params=_sentinel, *, recursive_guard=f
             return GenericAlias(t.__origin__, ev_args)
         if isinstance(t, types.UnionType):
             return functools.reduce(operator.or_, ev_args)
+        if isinstance(t, types.IntersectionType):
+            return functools.reduce(operator.and_, ev_args)
         else:
             return t.copy_with(ev_args)
     return t
@@ -749,6 +752,58 @@ def Final(self, parameters):
     """
     item = _type_check(parameters, f'{self} accepts only single type.', allow_special_forms=True)
     return _GenericAlias(self, (item,))
+
+@_SpecialForm
+def Intersection(self, parameters):
+    """Intersection type; Intersection[X, Y] means X and Y.
+
+    On Python 3.10 and higher, the & operator
+    can also be used to denote intersections;
+    X & Y means the same thing to the type checker as Intersection[X, Y].
+
+    To define a union, use e.g. Intersection[int, str]. Details:
+    - The arguments must be types and there must be at least one.
+    - None as an argument is a special case and is replaced by
+      type(None).
+    - Intersections of intersections are flattened, e.g.::
+
+        assert Intersection[Intersection[int, str], float] == Intersection[int, str, float]
+
+    - Intersection of a single argument vanish, e.g.::
+
+        assert Intersection[int] == int  # The constructor actually returns int
+
+    - Redundant arguments are skipped, e.g.::
+
+        assert Intersection[int, str, int] == Intersection[int, str]
+
+    - When comparing unions, the argument order is ignored, e.g.::
+
+        assert Intersection[int, str] == Intersection[str, int]
+
+    - You cannot subclass or instantiate an intersection.
+    """
+    if parameters == ():
+        raise TypeError("Cannot take a Intersection of no types.")
+    if not isinstance(parameters, tuple):
+        parameters = (parameters,)
+    msg = "Intersection[arg, ...]: each arg must be a type."
+    parameters = tuple(_type_check(p, msg) for p in parameters)
+    parameters = _remove_dups_flatten(parameters)
+    if len(parameters) == 1:
+        return parameters[0]
+    if len(parameters) == 2 and type(None) in parameters:
+        return _IntersectionGenericAlias(self, parameters, name="Optional")
+    return _IntersectionGenericAlias(self, parameters)
+
+def _make_intersection(left, right):
+    """Used from the C implementation of TypeVar.
+
+    TypeVar.__and__ calls this instead of returning types._IntersectionType
+    because we want to allow intersections between TypeVars and strings
+    (forward references).
+    """
+    return Intersection[left, right]
 
 @_SpecialForm
 def Union(self, parameters):
@@ -1104,6 +1159,12 @@ class ForwardRef(_Final, _root=True):
 
     def __hash__(self):
         return hash((self.__forward_arg__, self.__forward_module__))
+
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
     def __or__(self, other):
         return Union[self, other]
@@ -1756,6 +1817,38 @@ class _TupleType(_SpecialGenericAlias, _root=True):
         msg = "Tuple[t0, t1, ...]: each t must be a type."
         params = tuple(_type_check(p, msg) for p in params)
         return self.copy_with(params)
+
+
+class _IntersectionGenericAlias(_NotIterable, _GenericAlias, _root=True):
+    def copy_with(self, params):
+        return Union[params]
+
+    def __eq__(self, other):
+        if not isinstance(other, (_IntersectionGenericAlias, types.IntersectionType)):
+            return NotImplemented
+        try:  # fast path
+            return set(self.__args__) == set(other.__args__)
+        except TypeError:  # not hashable, slow path
+            return _compare_args_orderless(self.__args__, other.__args__)
+
+    def __hash__(self):
+        return hash(frozenset(self.__args__))
+
+    def __instancecheck__(self, obj):
+        for arg in self.__args__:
+            if isinstance(obj, arg):
+                return True
+        return False
+
+    def __subclasscheck__(self, cls):
+        for arg in self.__args__:
+            if issubclass(cls, arg):
+                return True
+        return False
+
+    def __reduce__(self):
+        func, (origin, args) = super().__reduce__()
+        return func, (Union, args)
 
 
 class _UnionGenericAlias(_NotIterable, _GenericAlias, _root=True):
@@ -2516,7 +2609,7 @@ def _strip_annotations(t):
         if stripped_args == t.__args__:
             return t
         return GenericAlias(t.__origin__, stripped_args)
-    if isinstance(t, types.UnionType):
+    if isinstance(t, (types.UnionType, types.IntersectionType)):
         stripped_args = tuple(_strip_annotations(a) for a in t.__args__)
         if stripped_args == t.__args__:
             return t
@@ -2552,6 +2645,8 @@ def get_origin(tp):
         return Generic
     if isinstance(tp, types.UnionType):
         return types.UnionType
+    if isinstance(tp, types.IntersectionType):
+        return types.IntersectionType
     return None
 
 
@@ -2576,7 +2671,7 @@ def get_args(tp):
         if _should_unflatten_callable_args(tp, res):
             res = (list(res[:-1]), res[-1])
         return res
-    if isinstance(tp, types.UnionType):
+    if isinstance(tp, (types.UnionType, types.IntersectionType)):
         return tp.__args__
     return ()
 

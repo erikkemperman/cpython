@@ -2,8 +2,9 @@
 #include "Python.h"
 #include "pycore_object.h"        // _PyObject_GC_TRACK/UNTRACK
 #include "pycore_typevarobject.h"
+#include "pycore_intersectionobject.h" // _Py_intersection_type_and
 #include "pycore_unionobject.h"   // _Py_union_type_or
-
+//#include "structmember.h"
 
 /*[clinic input]
 class typevar "typevarobject *" "&_PyTypeVar_Type"
@@ -149,6 +150,20 @@ type_check(PyObject *arg, const char *msg)
     PyObject *args[2] = {arg, message_str};
     PyObject *result = call_typing_func_object("_type_check", args, 2);
     Py_DECREF(message_str);
+    return result;
+}
+
+
+/*
+ * Return a typing.Intersection. This is used as the nb_and (&*) operator for
+ * TypeVar and ParamSpec. We use this rather than _Py_intersection_type_and
+ * (which would produce a types.Intersection) to be consistent with make_union.
+ */
+static PyObject *
+make_intersection(PyObject *self, PyObject *other)
+{
+    PyObject *args[2] = {self, other};
+    PyObject *result = call_typing_func_object("_make_intersection", args, 2);
     return result;
 }
 
@@ -655,6 +670,7 @@ details.\n\
 static PyType_Slot typevar_slots[] = {
     {Py_tp_doc, (void *)typevar_doc},
     {Py_tp_methods, typevar_methods},
+    {Py_nb_and, make_intersection},
     {Py_nb_or, make_union},
     {Py_tp_new, typevar_new},
     {Py_tp_dealloc, typevar_dealloc},
@@ -1216,8 +1232,9 @@ static PyType_Slot paramspec_slots[] = {
     {Py_tp_members, paramspec_members},
     {Py_tp_methods, paramspec_methods},
     {Py_tp_getset, paramspec_getset},
-    // Unions of ParamSpecs have no defined meaning, but they were allowed
-    // by the Python implementation, so we allow them here too.
+    // Intersections and Unions of ParamSpecs have no defined meaning, but they
+    // were allowed by the Python implementation, so we allow them here too.
+    {Py_nb_and, make_intersection},
     {Py_nb_or, make_union},
     {Py_tp_new, paramspec_new},
     {Py_tp_dealloc, paramspec_dealloc},
@@ -1763,6 +1780,7 @@ See PEP 695 for more information.\n\
 ");
 
 static PyNumberMethods typealias_as_number = {
+    .nb_and = _Py_intersection_type_and,
     .nb_or = _Py_union_type_or,
 };
 

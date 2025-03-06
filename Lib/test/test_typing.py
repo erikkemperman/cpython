@@ -18,7 +18,7 @@ from typing import Any, NoReturn, Never, assert_never
 from typing import overload, get_overloads, clear_overloads
 from typing import TypeVar, TypeVarTuple, Unpack, AnyStr
 from typing import T, KT, VT  # Not in __all__.
-from typing import Union, Optional, Literal
+from typing import Intersection, Union, Optional, Literal
 from typing import Tuple, List, Dict, MutableMapping
 from typing import Callable
 from typing import Generic, ClassVar, Final, final, Protocol
@@ -457,6 +457,16 @@ class TypeVarTests(BaseTestCase):
         self.assertEqual(Union[X, int].__args__, (X, int))
         self.assertEqual(Union[X, int].__parameters__, (X,))
         self.assertIs(Union[X, int].__origin__, Union)
+
+    def test_and(self):
+        X = TypeVar('X')
+        # use a string because str doesn't implement
+        # __and__/__rand__ itself
+        self.assertEqual(X & "x", Intersection[X, "x"])
+        self.assertEqual("x" & X, Intersection["x", X])
+        # make sure the order is correct
+        self.assertEqual(get_args(X & "x"), (X, ForwardRef("x")))
+        self.assertEqual(get_args("x" & X), (ForwardRef("x"), X))
 
     def test_or(self):
         X = TypeVar('X')
@@ -6494,6 +6504,12 @@ class ForwardRefTests(BaseTestCase):
         self.assertEqual(gth(Loop, globals())['attr'], Final[Loop])
         self.assertNotEqual(gth(Loop, globals())['attr'], Final[int])
         self.assertNotEqual(gth(Loop, globals())['attr'], Final)
+
+    def test_and(self):
+        X = ForwardRef('X')
+        # __and__/__rand__ itself
+        self.assertEqual(X & "x", Intersection[X, "x"])
+        self.assertEqual("x" & X, Intersection["x", X])
 
     def test_or(self):
         X = ForwardRef('X')

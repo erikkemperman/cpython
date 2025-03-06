@@ -806,6 +806,7 @@ class AnnotationsVisitor(PickleVisitor):
             else:
                 self.emit(f"PyObject *type = state->{field.type}_type;", 2)
             if field.opt:
+                self.emit("type = _Py_intersection_type_and(type, Py_None);", 2)
                 self.emit("type = _Py_union_type_or(type, Py_None);", 2)
                 self.emit("cond = type != NULL;", 2)
                 self.emit_annotations_error(name, 2)
@@ -1013,6 +1014,10 @@ ast_type_init(PyObject *self, PyObject *args, PyObject *kw)
                         goto set_remaining_cleanup;
                     }
                 }
+            }
+            else if (_PyIntersection_Check(type)) {
+                // optional field
+                // do nothing, we'll have set a None default on the class
             }
             else if (_PyUnion_Check(type)) {
                 // optional field
@@ -1780,6 +1785,8 @@ def generate_module_def(mod, metadata, f, internal_h):
         #include "pycore_ceval.h"         // _Py_EnterRecursiveCall
         #include "pycore_lock.h"          // _PyOnceFlag
         #include "pycore_interp.h"        // _PyInterpreterState.ast
+        #include "pycore_intersectionobject.h"   // _Py_intersection_type_and
+        //#include "pycore_modsupport.h"    // _PyArg_NoPositional()
         #include "pycore_pystate.h"       // _PyInterpreterState_GET()
         #include "pycore_unionobject.h"   // _Py_union_type_or
         #include "structmember.h"

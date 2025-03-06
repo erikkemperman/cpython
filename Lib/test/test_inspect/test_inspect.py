@@ -4280,12 +4280,17 @@ class TestSignatureObject(unittest.TestCase):
             self.assertRaises(ValueError, self.signature, C)
 
         with self.subTest('MethodWrapperType'):
+            class A:
+                __new__ = type.__and__.__get__(int, type)
             class C:
                 __new__ = type.__or__.__get__(int, type)
 
+            self.assertEqual(A(), A & int)
             self.assertEqual(C(), C | int)
             # TODO: Support MethodWrapperType
+            # self.assertEqual(self.signature(A), ((), ...))
             # self.assertEqual(self.signature(C), ((), ...))
+            self.assertRaises(ValueError, self.signature, A)
             self.assertRaises(ValueError, self.signature, C)
 
         # TODO: Test ClassMethodDescriptorType
@@ -4298,12 +4303,17 @@ class TestSignatureObject(unittest.TestCase):
             self.assertEqual(self.signature(C), self.signature(C.__subclasscheck__))
 
         with self.subTest('WrapperDescriptorType'):
+            class A:
+                __new__ = type.__and__
             class C:
                 __new__ = type.__or__
 
+            self.assertEqual(A(int), A & int)
             self.assertEqual(C(int), C | int)
             # TODO: Support WrapperDescriptorType
+            # self.assertEqual(self.signature(A), self.signature(C.__and__))
             # self.assertEqual(self.signature(C), self.signature(C.__or__))
+            self.assertRaises(ValueError, self.signature, A)
             self.assertRaises(ValueError, self.signature, C)
 
     def test_signature_on_subclass(self):
