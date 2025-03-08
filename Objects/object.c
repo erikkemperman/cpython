@@ -19,6 +19,7 @@
 #include "pycore_interpolation.h" // _PyInterpolation_Type
 #include "pycore_list.h"          // _PyList_DebugMallocStats()
 #include "pycore_long.h"          // _PyLong_GetZero()
+#include "pycore_intersectionobject.h"   // _PyIntersection_Type
 #include "pycore_memoryobject.h"  // _PyManagedBuffer_Type
 #include "pycore_namespace.h"     // _PyNamespace_Type
 #include "pycore_object.h"        // export _Py_SwappedOp
@@ -2529,6 +2530,7 @@ static PyTypeObject* static_types[] = {
     &_PyTemplate_Type,
     &_PyTemplateIter_Type,
     &_PyUnicodeASCIIIter_Type,
+    &_PyIntersection_Type,
     &_PyUnion_Type,
 #ifdef _Py_TIER2
     &_PyUOpExecutor_Type,

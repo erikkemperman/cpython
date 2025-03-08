@@ -1,5 +1,6 @@
 // typing.Union -- used to represent e.g. Union[int, str], int | str
 #include "Python.h"
+#include "pycore_intersectionobject.h"  // _Py_intersection_type_and, _PyIntersection_Check
 #include "pycore_object.h"  // _PyObject_GC_TRACK/UNTRACK
 #include "pycore_typevarobject.h"  // _PyTypeAlias_Type, _Py_typing_type_repr
 #include "pycore_unicodeobject.h" // _PyUnicode_EqualToASCIIString
@@ -248,6 +249,7 @@ is_unionable(PyObject *obj)
         PyType_Check(obj) ||
         _PyGenericAlias_Check(obj) ||
         _PyUnion_Check(obj) ||
+        _PyIntersection_Check(obj) ||
         Py_IS_TYPE(obj, &_PyTypeAlias_Type)) {
         return 1;
     }
@@ -395,6 +397,7 @@ static PyGetSetDef union_properties[] = {
 };
 
 static PyNumberMethods union_as_number = {
+        .nb_and = _Py_intersection_type_and, // Add __and__ function
         .nb_or = _Py_union_type_or, // Add __or__ function
 };
 

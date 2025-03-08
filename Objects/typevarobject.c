@@ -1,6 +1,7 @@
 // TypeVar, TypeVarTuple, ParamSpec, and TypeAlias
 #include "Python.h"
 #include "pycore_interpframe.h"   // _PyInterpreterFrame
+#include "pycore_intersectionobject.h"   // _Py_intersection_type_and
 #include "pycore_object.h"        // _PyObject_GC_TRACK/UNTRACK, PyAnnotateFormat
 #include "pycore_typevarobject.h"
 #include "pycore_unicodeobject.h" // _PyUnicode_EqualToASCIIString()
@@ -358,6 +359,22 @@ type_check(PyObject *arg, const char *msg)
     PyObject *args[2] = {arg, message_str};
     PyObject *result = call_typing_func_object("_type_check", args, 2);
     Py_DECREF(message_str);
+    return result;
+}
+
+/*
+ * Return a typing.Intersection. This is used as the nb_and (&) operator for
+ * TypeVar and ParamSpec. We use this rather than _Py_intersection_type_and
+ * (which would produce a types.Interseetion) because historically TypeVar
+ * supported unions with string forward references, and we want to
+ * preserve that behavior. _Py_intersection_type_and only allows a small set
+ * of types.
+ */
+static PyObject *
+make_intersection(PyObject *self, PyObject *other)
+{
+    PyObject *args[2] = {self, other};
+    PyObject *result = call_typing_func_object("_make_intersection", args, 2);
     return result;
 }
 
@@ -924,6 +941,7 @@ static PyType_Slot typevar_slots[] = {
     {Py_tp_repr, typevar_repr},
     {Py_tp_members, typevar_members},
     {Py_tp_getset, typevar_getset},
+    {Py_nb_and, make_intersection},
     {0, NULL},
 };
 
@@ -1501,6 +1519,9 @@ static PyType_Slot paramspec_slots[] = {
     {Py_tp_traverse, paramspec_traverse},
     {Py_tp_clear, paramspec_clear},
     {Py_tp_repr, paramspec_repr},
+    // Intersections of ParamSpecs have no defined meaning, but they were allowed
+    // by the Python implementation for unions, so we allow them here too.
+    {Py_nb_and, make_intersection},
     {0, 0},
 };
 
@@ -2144,6 +2165,7 @@ See PEP 695 for more information.\n\
 ");
 
 static PyNumberMethods typealias_as_number = {
+    .nb_and = _Py_intersection_type_and,
     .nb_or = _Py_union_type_or,
 };
 

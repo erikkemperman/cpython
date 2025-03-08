@@ -39,6 +39,7 @@ from _typing import (
     TypeAliasType,
     Generic,
     Union,
+    Intersection,
     NoDefault,
 )
 
@@ -53,6 +54,7 @@ __all__ = [
     'Final',
     'ForwardRef',
     'Generic',
+    'Intersection',
     'Literal',
     'Optional',
     'ParamSpec',
@@ -448,7 +450,7 @@ def _eval_type(t, globalns, localns, type_params=_sentinel, *, recursive_guard=f
         return evaluate_forward_ref(t, globals=globalns, locals=localns,
                                     type_params=type_params, owner=owner,
                                     _recursive_guard=recursive_guard, format=format)
-    if isinstance(t, (_GenericAlias, GenericAlias, Union)):
+    if isinstance(t, (_GenericAlias, GenericAlias, Union, Intersection)):
         if isinstance(t, GenericAlias):
             args = tuple(
                 _make_forward_ref(arg) if isinstance(arg, str) else arg
@@ -475,6 +477,8 @@ def _eval_type(t, globalns, localns, type_params=_sentinel, *, recursive_guard=f
             return GenericAlias(t.__origin__, ev_args)
         if isinstance(t, Union):
             return functools.reduce(operator.or_, ev_args)
+        elif isinstance(t, types.IntersectionType):
+            return functools.reduce(operator.and_, ev_args)
         else:
             return t.copy_with(ev_args)
     return t
@@ -535,6 +539,12 @@ class _SpecialForm(_Final, _NotIterable, _root=True):
 
     def __call__(self, *args, **kwds):
         raise TypeError(f"Cannot instantiate {self!r}")
+
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
     def __or__(self, other):
         return Union[self, other]
@@ -1003,7 +1013,6 @@ def evaluate_forward_ref(
         owner=owner,
     )
 
-
 def _is_unpacked_typevartuple(x: Any) -> bool:
     return ((not isinstance(x, type)) and
             getattr(x, '__typing_is_unpacked_typevartuple__', False))
@@ -1328,6 +1337,12 @@ class _GenericAlias(_BaseGenericAlias, _root=True):
     def __hash__(self):
         return hash((self.__origin__, self.__args__))
 
+    def __and__(self, right):
+        return Intersection[self, right]
+
+    def __rand__(self, left):
+        return Intersection[left, self]
+
     def __or__(self, right):
         return Union[self, right]
 
@@ -1556,6 +1571,12 @@ class _SpecialGenericAlias(_NotIterable, _BaseGenericAlias, _root=True):
 
     def __reduce__(self):
         return self._name
+
+    def __and__(self, right):
+        return Intersection[self, right]
+
+    def __rand__(self, left):
+        return Intersection[left, self]
 
     def __or__(self, right):
         return Union[self, right]
@@ -2405,7 +2426,7 @@ def _strip_annotations(t):
         if stripped_args == t.__args__:
             return t
         return GenericAlias(t.__origin__, stripped_args)
-    if isinstance(t, Union):
+    if isinstance(t, (Union, Intersection)):
         stripped_args = tuple(_strip_annotations(a) for a in t.__args__)
         if stripped_args == t.__args__:
             return t
@@ -2417,8 +2438,8 @@ def _strip_annotations(t):
 def get_origin(tp):
     """Get the unsubscripted version of a type.
 
-    This supports generic types, Callable, Tuple, Union, Literal, Final, ClassVar,
-    Annotated, and others. Return None for unsupported types.
+    This supports generic types, Callable, Tuple, Union, Intersection, Literal,
+    Final, ClassVar, Annotated, and others. Return None for unsupported types.
 
     Examples::
 
@@ -2429,6 +2450,7 @@ def get_origin(tp):
         >>> assert get_origin(Generic) is Generic
         >>> assert get_origin(Generic[T]) is Generic
         >>> assert get_origin(Union[T, int]) is Union
+        >>> assert get_origin(Intersection[T, int]) is Intersection
         >>> assert get_origin(List[Tuple[T, T]][int]) is list
         >>> assert get_origin(P.args) is P
     """
@@ -2441,6 +2463,8 @@ def get_origin(tp):
         return Generic
     if isinstance(tp, Union):
         return Union
+    if isinstance(tp, Intersection):
+        return Intersection
     return None
 
 
@@ -2448,6 +2472,7 @@ def get_args(tp):
     """Get type arguments with all substitutions performed.
 
     For unions, basic simplifications used by Union constructor are performed.
+    Likewise for intersections.
 
     Examples::
 
@@ -2456,6 +2481,8 @@ def get_args(tp):
         >>> assert get_args(int) == ()
         >>> assert get_args(Union[int, Union[T, int], str][int]) == (int, str)
         >>> assert get_args(Union[int, Tuple[T, int]][str]) == (int, Tuple[str, int])
+        >>> assert get_args(Intersection[int, Intersection[T, int], str][int]) == (int, str)
+        >>> assert get_args(Intersection[int, Tuple[T, int]][str]) == (int, Tuple[str, int])
         >>> assert get_args(Callable[[], T][int]) == ([], int)
     """
     if isinstance(tp, _AnnotatedAlias):
@@ -2465,7 +2492,7 @@ def get_args(tp):
         if _should_unflatten_callable_args(tp, res):
             res = (list(res[:-1]), res[-1])
         return res
-    if isinstance(tp, Union):
+    if isinstance(tp, (Union, Intersection)):
         return tp.__args__
     return ()
 
@@ -3348,6 +3375,12 @@ class NewType:
 
     def __reduce__(self):
         return self.__qualname__
+
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
     def __or__(self, other):
         return Union[self, other]

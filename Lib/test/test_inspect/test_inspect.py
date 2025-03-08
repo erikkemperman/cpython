@@ -1749,9 +1749,11 @@ class TestClassesAndFunctions(unittest.TestCase):
 
 class TestFormatAnnotation(unittest.TestCase):
     def test_typing_replacement(self):
-        from test.typinganndata.ann_module9 import ann, ann1
-        self.assertEqual(inspect.formatannotation(ann), 'List[str] | int')
-        self.assertEqual(inspect.formatannotation(ann1), 'List[testModule.typing.A] | int')
+        from test.typinganndata.ann_module9 import ann, ann1, ann2, ann3
+        self.assertEqual(inspect.formatannotation(ann), 'List[str] & int')
+        self.assertEqual(inspect.formatannotation(ann1), 'List[testModule.typing.A] &int')
+        self.assertEqual(inspect.formatannotation(ann2), 'List[str] | int')
+        self.assertEqual(inspect.formatannotation(ann3), 'List[testModule.typing.A] | int')
 
     def test_forwardref(self):
         fwdref = ForwardRef('fwdref')

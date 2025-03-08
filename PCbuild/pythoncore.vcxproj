@@ -262,10 +262,7 @@
     <ClInclude Include="..\Include\internal\pycore_initconfig.h" />
     <ClInclude Include="..\Include\internal\pycore_instruction_sequence.h" />
     <ClInclude Include="..\Include\internal\pycore_interp.h" />
-    <ClInclude Include="..\Include\internal\pycore_interp_structs.h" />
-    <ClInclude Include="..\Include\internal\pycore_interpframe.h" />
-    <ClInclude Include="..\Include\internal\pycore_interpframe_structs.h" />
-    <ClInclude Include="..\Include\internal\pycore_interpolation.h" />
+    <ClInclude Include="..\Include\internal\pycore_intersectionobject.h" />
     <ClInclude Include="..\Include\internal\pycore_intrinsics.h" />
     <ClInclude Include="..\Include\internal\pycore_jit.h" />
     <ClInclude Include="..\Include\internal\pycore_list.h" />
@@ -531,7 +528,7 @@
     <ClCompile Include="..\Objects\funcobject.c" />
     <ClCompile Include="..\Objects\genericaliasobject.c" />
     <ClCompile Include="..\Objects\genobject.c" />
-    <ClCompile Include="..\Objects\interpolationobject.c" />
+    <ClCompile Include="..\Objects\intersectionobject.c" />
     <ClCompile Include="..\Objects\iterobject.c" />
     <ClCompile Include="..\Objects\listobject.c" />
     <ClCompile Include="..\Objects\longobject.c" />

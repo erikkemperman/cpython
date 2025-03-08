@@ -17,7 +17,7 @@ from annotationlib import (
     annotations_to_string,
     type_repr,
 )
-from typing import Unpack, get_type_hints, List, Union
+from typing import Unpack, get_type_hints, List, Union, Intersection
 
 from test import support
 from test.support import import_helper
@@ -142,6 +142,28 @@ class TestForwardRefFormat(unittest.TestCase):
         self.assertIs(arg1, str)
         self.assertEqual(
             arg2, support.EqualToForwardRef("undefined", is_class=True, owner=UnionForwardrefs)
+        )
+
+    def test_partially_nonexistent_intersection(self):
+        # Test intersections with '&' syntax equal intersections with typing.Intersection[] with some forwardrefs
+        class IntersectionForwardrefs:
+            ampersand: str & undefined
+            intersection: Intersection[str, undefined]
+
+        annos = get_annotations(IntersectionForwardrefs, format=Format.FORWARDREF)
+
+        ampersand = annos["ampersand"]
+        self.assertIsInstance(ampersand, ForwardRef)
+        self.assertEqual(
+            ampersand.evaluate(globals={"undefined": int}),
+            str & int,
+        )
+        intersection = annos["intersection"]
+        self.assertIsInstance(intersection, Intersection)
+        arg1, arg2 = typing.get_args(intersection)
+        self.assertIs(arg1, str)
+        self.assertEqual(
+            arg2, support.EqualToForwardRef("undefined", is_class=True, owner=IntersectionForwardrefs)
         )
 
 
@@ -1411,6 +1433,8 @@ class TestForwardRefClass(unittest.TestCase):
         self.assertNotEqual(List[c1_gth], List[C])
         self.assertEqual(Union[c1, c1_gth], Union[c1])
         self.assertEqual(Union[c1, c1_gth, int], Union[c1, int])
+        self.assertEqual(Intersection[c1, c1_gth], Intersection[c1])
+        self.assertEqual(Intersection[c1, c1_gth, int], Intersection[c1, int])
 
     def test_forward_equality_hash(self):
         c1 = ForwardRef("int")
@@ -1518,12 +1542,22 @@ class TestForwardRefClass(unittest.TestCase):
         self.assertEqual(X | "x", Union[X, "x"])
         self.assertEqual("x" | X, Union["x", X])
 
+    def test_and(self):
+        X = ForwardRef("X")
+        # __and__/__rand__ itself
+        self.assertEqual(X & "x", Intersection[X, "x"])
+        self.assertEqual("x" & X, Intersection["x", X])
+
     def test_multiple_ways_to_create(self):
         X1 = Union["X"]
         self.assertIsInstance(X1, ForwardRef)
-        X2 = ForwardRef("X")
+        X2 = Intersection["X"]
         self.assertIsInstance(X2, ForwardRef)
+        X3 = ForwardRef("X")
+        self.assertIsInstance(X3, ForwardRef)
         self.assertEqual(X1, X2)
+        self.assertEqual(X1, X3)
+        self.assertEqual(X2, X3)
 
     def test_special_attrs(self):
         # Forward refs provide a different introspection API. __name__ and
