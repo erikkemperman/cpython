@@ -2925,6 +2925,16 @@ class TestSingleDispatch(unittest.TestCase):
 
         with self.assertRaises(TypeError) as exc:
             @i.register
+            def _(arg: typing.Intersection[int, typing.Iterable[str]]):
+                return "Invalid Intersection"
+        self.assertTrue(str(exc.exception).startswith(
+            "Invalid annotation for 'arg'."
+        ))
+        self.assertTrue(str(exc.exception).endswith(
+            'typing.Intersection[int, typing.Iterable[str]] not all arguments are classes.'
+        ))
+        with self.assertRaises(TypeError) as exc:
+            @i.register
             def _(arg: typing.Union[int, typing.Iterable[str]]):
                 return "Invalid Union"
         self.assertTrue(str(exc.exception).startswith(
@@ -2956,6 +2966,68 @@ class TestSingleDispatch(unittest.TestCase):
         msg = 't requires at least 1 positional argument'
         with self.assertRaisesRegex(TypeError, msg):
             A().t(a=1)
+
+    def test_intersection(self):
+        @functools.singledispatch
+        def f(arg):
+            return "default"
+
+        @f.register
+        def _(arg: typing.Intersection[str, bytes]):
+            return "typing.Intersection"
+
+        @f.register
+        def _(arg: int & float):
+            return "types.IntersectionType"
+
+        self.assertEqual(f([]), "default")
+        self.assertEqual(f(""), "typing.Intersection")
+        self.assertEqual(f(b""), "typing.Intersection")
+        self.assertEqual(f(1), "types.IntersectionType")
+        self.assertEqual(f(1.0), "types.IntersectionType")
+
+    def test_intersection_conflict(self):
+        @functools.singledispatch
+        def f(arg):
+            return "default"
+
+        @f.register
+        def _(arg: typing.Intersection[str, bytes]):
+            return "typing.Intersection"
+
+        @f.register
+        def _(arg: int & str):
+            return "types.IntersectionType"
+
+        self.assertEqual(f([]), "default")
+        self.assertEqual(f(""), "types.IntersectionType")  # last one wins
+        self.assertEqual(f(b""), "typing.Intersection")
+        self.assertEqual(f(1), "types.IntersectionType")
+
+    def test_intersection_None(self):
+        @functools.singledispatch
+        def typing_intersection(arg):
+            return "default"
+
+        @typing_intersection.register
+        def _(arg: typing.Intersection[str, None]):
+            return "typing.Intersection"
+
+        self.assertEqual(typing_intersection(1), "default")
+        self.assertEqual(typing_intersection(""), "typing.Intersection")
+        self.assertEqual(typing_intersection(None), "typing.Intersection")
+
+        @functools.singledispatch
+        def types_intersection(arg):
+            return "default"
+
+        @types_intersection.register
+        def _(arg: int & None):
+            return "types.IntersectionType"
+
+        self.assertEqual(types_intersection(""), "default")
+        self.assertEqual(types_intersection(1), "types.IntersectionType")
+        self.assertEqual(types_intersection(None), "types.IntersectionType")
 
     def test_union(self):
         @functools.singledispatch
@@ -3029,6 +3101,8 @@ class TestSingleDispatch(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "Invalid first argument to "):
             f.register(typing.List[int], lambda arg: "typing.GenericAlias")
         with self.assertRaisesRegex(TypeError, "Invalid first argument to "):
+            f.register(list[int] & str, lambda arg: "types.IntersectionTypes(types.GenericAlias)")
+        with self.assertRaisesRegex(TypeError, "Invalid first argument to "):
             f.register(list[int] | str, lambda arg: "types.UnionTypes(types.GenericAlias)")
         with self.assertRaisesRegex(TypeError, "Invalid first argument to "):
             f.register(typing.List[float] | bytes, lambda arg: "typing.Union[typing.GenericAlias]")
@@ -3065,6 +3139,14 @@ class TestSingleDispatch(unittest.TestCase):
             @f.register
             def _(arg: typing.List[float]):
                 return "typing.GenericAlias"
+        with self.assertRaisesRegex(TypeError, "Invalid annotation for 'arg'"):
+            @f.register
+            def _(arg: list[int] & str):
+                return "types.IntersectionType(types.GenericAlias)"
+        with self.assertRaisesRegex(TypeError, "Invalid annotation for 'arg'"):
+            @f.register
+            def _(arg: typing.List[float] & bytes):
+                return "typing.Intersection[typing.GenericAlias]"
         with self.assertRaisesRegex(TypeError, "Invalid annotation for 'arg'"):
             @f.register
             def _(arg: list[int] | str):

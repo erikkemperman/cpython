@@ -30,6 +30,12 @@ def pickle_complex(c):
 
 pickle(complex, pickle_complex, complex)
 
+def pickle_intersection(obj):
+    import functools, operator
+    return functools.reduce, (operator.and_, obj.__args__)
+
+pickle(type(int & str), pickle_intersection)
+
 def pickle_union(obj):
     import functools, operator
     return functools.reduce, (operator.or_, obj.__args__)

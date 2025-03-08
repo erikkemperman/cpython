@@ -130,6 +130,8 @@ DATA
     c_alias = test.test_pydoc.pydoc_mod.C[int]
     list_alias1 = typing.List[int]
     list_alias2 = list[int]
+    type_intersection1 = typing.Intersection[int, str]
+    type_intersection2 = int & str
     type_union1 = typing.Union[int, str]
     type_union2 = int | str
 
@@ -218,6 +220,8 @@ Data
     c_alias = test.test_pydoc.pydoc_mod.C[int]
     list_alias1 = typing.List[int]
     list_alias2 = list[int]
+    type_intersection1 = typing.Intersection[int, str]
+    type_intersection2 = int &amp; str
     type_union1 = typing.Union[int, str]
     type_union2 = int | str
 
@@ -1417,6 +1421,22 @@ class TestDescriptions(unittest.TestCase):
         self.assertIn('\nclass list(object)', doc)
         if not MISSING_C_DOCSTRINGS:
             self.assertIn(list.__doc__.strip().splitlines()[0], doc)
+
+    def test_intersection_type(self):
+        self.assertEqual(pydoc.describe(typing.Intersection[int, str]),
+                         '_IntersectionGenericAlias')
+        doc = pydoc.render_doc(typing.Intersection[int, str], renderer=pydoc.plaintext)
+        self.assertIn('_IntersectionGenericAlias in module typing', doc)
+        self.assertIn('Intersection = typing.Intersection', doc)
+        if typing.Intersection.__doc__:
+            self.assertIn(typing.Intersection.__doc__.strip().splitlines()[0], doc)
+
+        self.assertEqual(pydoc.describe(int & str), 'IntersectionType')
+        doc = pydoc.render_doc(int & str, renderer=pydoc.plaintext)
+        self.assertIn('IntersectionType in module types object', doc)
+        self.assertIn('\nclass IntersectionType(builtins.object)', doc)
+        if not MISSING_C_DOCSTRINGS:
+            self.assertIn(types.IntersectionType.__doc__.strip().splitlines()[0], doc)
 
     def test_union_type(self):
         self.assertEqual(pydoc.describe(typing.Union[int, str]), '_UnionGenericAlias')

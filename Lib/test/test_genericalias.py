@@ -303,7 +303,7 @@ class BaseTest(unittest.TestCase):
         self.assertEqual(T4.__parameters__, ())
 
     def test_parameter_chaining(self):
-        from typing import List, Dict, Union, Callable
+        from typing import List, Dict, Intersection, Union, Callable
         self.assertEqual(list[T][int], list[int])
         self.assertEqual(dict[str, T][int], dict[str, int])
         self.assertEqual(dict[T, int][str], dict[str, int])
@@ -318,6 +318,7 @@ class BaseTest(unittest.TestCase):
 
         self.assertEqual(list[List[T]][int], list[List[int]])
         self.assertEqual(list[Dict[K, V]][str, int], list[Dict[str, int]])
+        self.assertEqual(list[Intersection[K, V]][str, int], list[Intersection[str, int]])
         self.assertEqual(list[Union[K, V]][str, int], list[Union[str, int]])
         self.assertEqual(list[Callable[[K, V], K]][str, int],
                          list[Callable[[str, int], str]])
@@ -408,6 +409,16 @@ class BaseTest(unittest.TestCase):
         self.assertIs(alias.__unpacked__, False)
         unpacked = (*alias,)[0]
         self.assertIs(unpacked.__unpacked__, True)
+
+    def test_intersection(self):
+        a = typing.Intersection[list[int], list[str]]
+        self.assertEqual(a.__args__, (list[int], list[str]))
+        self.assertEqual(a.__parameters__, ())
+
+    def test_intersection_generic(self):
+        a = typing.Intersection[list[T], tuple[T, ...]]
+        self.assertEqual(a.__args__, (list[T], tuple[T, ...]))
+        self.assertEqual(a.__parameters__, (T,))
 
     def test_union(self):
         a = typing.Union[list[int], list[str]]

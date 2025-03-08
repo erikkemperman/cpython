@@ -2,6 +2,8 @@
 
 #include "Python.h"
 #include "pycore_ceval.h"         // _PyEval_GetBuiltin()
+#include "pycore_intersectionobject.h"  // _Py_intersection_type_and,
+                                        // _PyGenericAlias_Check
 #include "pycore_modsupport.h"    // _PyArg_NoKeywords()
 #include "pycore_object.h"
 #include "pycore_unionobject.h"   // _Py_union_type_or, _PyGenericAlias_Check
@@ -872,6 +874,7 @@ ga_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 }
 
 static PyNumberMethods ga_as_number = {
+        .nb_and = _Py_intersection_type_and, // Add __and__ function
         .nb_or = _Py_union_type_or, // Add __or__ function
 };
 
@@ -969,7 +972,7 @@ PyTypeObject Py_GenericAliasType = {
     .tp_basicsize = sizeof(gaobject),
     .tp_dealloc = ga_dealloc,
     .tp_repr = ga_repr,
-    .tp_as_number = &ga_as_number,  // allow X | Y of GenericAlias objs
+    .tp_as_number = &ga_as_number,  // allow X | Y and X & Y of GenericAlias objs
     .tp_as_mapping = &ga_as_mapping,
     .tp_hash = ga_hash,
     .tp_call = ga_call,

@@ -12,6 +12,7 @@
 #include "pycore_floatobject.h"   // _PyFloat_DebugMallocStats()
 #include "pycore_initconfig.h"    // _PyStatus_EXCEPTION()
 #include "pycore_instruction_sequence.h" // _PyInstructionSequence_Type
+#include "pycore_intersectionobject.h"   // _PyIntersection_Type
 #include "pycore_hashtable.h"     // _Py_hashtable_new()
 #include "pycore_memoryobject.h"  // _PyManagedBuffer_Type
 #include "pycore_namespace.h"     // _PyNamespace_Type
@@ -2381,6 +2382,7 @@ static PyTypeObject* static_types[] = {
     &_PyNotImplemented_Type,
     &_PyPositionsIterator,
     &_PyUnicodeASCIIIter_Type,
+    &_PyIntersection_Type,
     &_PyUnion_Type,
 #ifdef _Py_TIER2
     &_PyUOpExecutor_Type,
