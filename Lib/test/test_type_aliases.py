@@ -254,6 +254,19 @@ class TypeAliasTypeTest(unittest.TestCase):
             class MyAlias(TypeAliasType):
                 pass
 
+    def test_intersection(self):
+        type Alias1 = int
+        type Alias2 = str
+        intersection = Alias1 & Alias2
+        self.assertIsInstance(intersection, types.IntersectionType)
+        self.assertEqual(get_args(intersection), (Alias1, Alias2))
+        intersection2 = Alias1 & list[float]
+        self.assertIsInstance(intersection2, types.IntersectionType)
+        self.assertEqual(get_args(intersection2), (Alias1, list[float]))
+        intersection3 = list[range] & Alias1
+        self.assertIsInstance(intersection3, types.IntersectionType)
+        self.assertEqual(get_args(intersection3), (list[range], Alias1))
+
     def test_union(self):
         type Alias1 = int
         type Alias2 = str

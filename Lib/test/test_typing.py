@@ -18,7 +18,7 @@ from typing import Any, NoReturn, Never, assert_never
 from typing import overload, get_overloads, clear_overloads
 from typing import TypeVar, TypeVarTuple, Unpack, AnyStr
 from typing import T, KT, VT  # Not in __all__.
-from typing import Union, Optional, Literal
+from typing import Intersection, Union, Optional, Literal
 from typing import Tuple, List, Dict, MutableMapping
 from typing import Callable
 from typing import Generic, ClassVar, Final, final, Protocol
@@ -445,6 +445,33 @@ class TypeVarTests(BaseTestCase):
             X = TypeVar('X', int)
             X
 
+    def test_intersection_unique(self):
+        X = TypeVar('X')
+        Y = TypeVar('Y')
+        self.assertNotEqual(X, Y)
+        self.assertEqual(Intersection[X], X)
+        self.assertNotEqual(Intersection[X], Intersection[X, Y])
+        self.assertEqual(Intersection[X, X], X)
+        self.assertNotEqual(Intersection[X, int], Intersection[X])
+        self.assertNotEqual(Intersection[X, int], Intersection[int])
+        self.assertEqual(Intersection[X, int].__args__, (X, int))
+        self.assertEqual(Intersection[X, int].__parameters__, (X,))
+        self.assertIs(Intersection[X, int].__origin__, Intersection)
+
+    def test_and(self):
+        X = TypeVar('X')
+        # use a string because str doesn't implement
+        # __and__/__rand__ itself
+        self.assertEqual(X & "x", Intersection[X, "x"])
+        self.assertEqual("x" & X, Intersection["x", X])
+        # make sure the order is correct
+        self.assertEqual(get_args(X & "x"), (X, ForwardRef("x")))
+        self.assertEqual(get_args("x" & X), (ForwardRef("x"), X))
+
+    def test_intersection_constrained(self):
+        A = TypeVar('A', str, bytes)
+        self.assertNotEqual(Intersection[A, str], Intersection[A])
+
     def test_union_unique(self):
         X = TypeVar('X')
         Y = TypeVar('Y')
@@ -500,6 +527,8 @@ class TypeVarTests(BaseTestCase):
 
     def test_bound_errors(self):
         with self.assertRaises(TypeError):
+            TypeVar('X', bound=Intersection)
+        with self.assertRaises(TypeError):
             TypeVar('X', bound=Union)
         with self.assertRaises(TypeError):
             TypeVar('X', str, float, bound=Employee)
@@ -534,13 +563,15 @@ class TypeVarTests(BaseTestCase):
         self.assertIs(subst(Any), Any)
         self.assertIs(subst(None), type(None))
         self.assertIs(subst(T), T)
+        self.assertEqual(subst(int & str), int & str)
+        self.assertEqual(subst(Intersection[int, str]), Intersection[int, str])
         self.assertEqual(subst(int|str), int|str)
         self.assertEqual(subst(Union[int, str]), Union[int, str])
 
     def test_bad_var_substitution(self):
         T = TypeVar('T')
         bad_args = (
-            (), (int, str), Union,
+            (), (int, str), Intersection, Union,
             Generic, Generic[T], Protocol, Protocol[T],
             Final, Final[int], ClassVar, ClassVar[int],
         )
@@ -1988,9 +2019,261 @@ class TypeVarTuplePicklingTests(BaseTestCase):
             self.assertEqual(t, t2)
 
 
+class IntersectionTests(BaseTestCase):
+
+    def test_intersection_basics(self):
+        u = Intersection[int, float]
+        self.assertNotEqual(u, Intersection)
+
+    def test_intersection_isinstance(self):
+        self.assertTrue(isinstance(42, Intersection[int, str]))
+        self.assertTrue(isinstance('abc', Intersection[int, str]))
+        self.assertFalse(isinstance(3.14, Intersection[int, str]))
+        self.assertTrue(isinstance(42, Intersection[int, list[int]]))
+        self.assertTrue(isinstance(42, Intersection[int, Any]))
+
+    def test_intersection_isinstance_type_error(self):
+        with self.assertRaises(TypeError):
+            isinstance(42, Intersection[str, list[int]])
+        with self.assertRaises(TypeError):
+            isinstance(42, Intersection[list[int], int])
+        with self.assertRaises(TypeError):
+            isinstance(42, Intersection[list[int], str])
+        with self.assertRaises(TypeError):
+            isinstance(42, Intersection[str, Any])
+        with self.assertRaises(TypeError):
+            isinstance(42, Intersection[Any, int])
+        with self.assertRaises(TypeError):
+            isinstance(42, Intersection[Any, str])
+
+    def test_intersection_optional_isinstance(self):
+        self.assertTrue(isinstance(42, Optional[int]))
+        self.assertTrue(isinstance(None, Optional[int]))
+        self.assertFalse(isinstance('abc', Optional[int]))
+
+    def test_intersection_optional_isinstance_type_error(self):
+        with self.assertRaises(TypeError):
+            isinstance(42, Optional[list[int]])
+        with self.assertRaises(TypeError):
+            isinstance(None, Optional[list[int]])
+        with self.assertRaises(TypeError):
+            isinstance(42, Optional[Any])
+        with self.assertRaises(TypeError):
+            isinstance(None, Optional[Any])
+
+    def test_intersection_issubclass(self):
+        self.assertTrue(issubclass(int, Intersection[int, str]))
+        self.assertTrue(issubclass(str, Intersection[int, str]))
+        self.assertFalse(issubclass(float, Intersection[int, str]))
+        self.assertTrue(issubclass(int, Intersection[int, list[int]]))
+        self.assertTrue(issubclass(int, Intersection[int, Any]))
+        self.assertFalse(issubclass(int, Intersection[str, Any]))
+        self.assertTrue(issubclass(int, Intersection[Any, int]))
+        self.assertFalse(issubclass(int, Intersection[Any, str]))
+
+    def test_intersection_issubclass_type_error(self):
+        with self.assertRaises(TypeError):
+            issubclass(int, Intersection)
+        with self.assertRaises(TypeError):
+            issubclass(Intersection, int)
+        with self.assertRaises(TypeError):
+            issubclass(Intersection[int, str], int)
+        with self.assertRaises(TypeError):
+            issubclass(int, Intersection[str, list[int]])
+        with self.assertRaises(TypeError):
+            issubclass(int, Intersection[list[int], int])
+        with self.assertRaises(TypeError):
+            issubclass(int, Intersection[list[int], str])
+
+    def test_intersection_any(self):
+        u = Intersection[Any]
+        self.assertEqual(u, Any)
+        u1 = Intersection[int, Any]
+        u2 = Intersection[Any, int]
+        u3 = Intersection[Any, object]
+        self.assertEqual(u1, u2)
+        self.assertNotEqual(u1, Any)
+        self.assertNotEqual(u2, Any)
+        self.assertNotEqual(u3, Any)
+
+    def test_intersection_object(self):
+        u = Intersection[object]
+        self.assertEqual(u, object)
+        u1 = Intersection[int, object]
+        u2 = Intersection[object, int]
+        self.assertEqual(u1, u2)
+        self.assertNotEqual(u1, object)
+        self.assertNotEqual(u2, object)
+
+    def test_intersection_unordered(self):
+        u1 = Intersection[int, float]
+        u2 = Intersection[float, int]
+        self.assertEqual(u1, u2)
+
+    def test_intersection_single_class_disappears(self):
+        t = Intersection[Employee]
+        self.assertIs(t, Employee)
+
+    def test_intersection_base_class_kept(self):
+        u = Intersection[Employee, Manager]
+        self.assertNotEqual(u, Employee)
+        self.assertIn(Employee, u.__args__)
+        self.assertIn(Manager, u.__args__)
+
+    def test_intersection_intersection(self):
+        u = Intersection[int, float]
+        v = Intersection[u, Employee]
+        self.assertEqual(v, Intersection[int, float, Employee])
+
+    def test_intersection_of_unhashable(self):
+        class UnhashableMeta(type):
+            __hash__ = None
+
+        class A(metaclass=UnhashableMeta): ...
+        class B(metaclass=UnhashableMeta): ...
+
+        self.assertEqual(Intersection[A, B].__args__, (A, B))
+        intersection1 = Intersection[A, B]
+        with self.assertRaises(TypeError):
+            hash(intersection1)
+
+        intersection2 = Intersection[int, B]
+        with self.assertRaises(TypeError):
+            hash(intersection2)
+
+        intersection3 = Intersection[A, int]
+        with self.assertRaises(TypeError):
+            hash(intersection3)
+
+    def test_intersection_repr(self):
+        self.assertEqual(repr(Intersection), 'typing.Intersection')
+        u = Intersection[Employee, int]
+        self.assertEqual(repr(u), 'typing.Intersection[%s.Employee, int]' % __name__)
+        u = Intersection[int, Employee]
+        self.assertEqual(repr(u), 'typing.Intersection[int, %s.Employee]' % __name__)
+        T = TypeVar('T')
+        u = Intersection[T, int][int]
+        self.assertEqual(repr(u), repr(int))
+        u = Intersection[List[int], int]
+        self.assertEqual(repr(u), 'typing.Intersection[typing.List[int], int]')
+        u = Intersection[list[int], dict[str, float]]
+        self.assertEqual(repr(u), 'typing.Intersection[list[int], dict[str, float]]')
+        u = Intersection[int & float]
+        self.assertEqual(repr(u), 'typing.Intersection[int, float]')
+
+        u = Intersection[None, str, int]
+        self.assertEqual(repr(u), 'typing.Intersection[NoneType, str, int]')
+
+    def test_intersection_dir(self):
+        dir_items = set(dir(Intersection[str, int]))
+        for required_item in [
+            '__args__', '__parameters__', '__origin__',
+        ]:
+            with self.subTest(required_item=required_item):
+                self.assertIn(required_item, dir_items)
+
+    def test_intersection_cannot_subclass(self):
+        with self.assertRaisesRegex(TypeError,
+                r'Cannot subclass typing\.Intersection'):
+            class C(Intersection):
+                pass
+        with self.assertRaisesRegex(TypeError, CANNOT_SUBCLASS_TYPE):
+            class D(type(Intersection)):
+                pass
+        with self.assertRaisesRegex(TypeError,
+                r'Cannot subclass typing\.Intersection\[int, str\]'):
+            class E(Intersection[int, str]):
+                pass
+
+    def test_intersection_cannot_instantiate(self):
+        with self.assertRaises(TypeError):
+            Intersection()
+        with self.assertRaises(TypeError):
+            type(Intersection)()
+        u = Intersection[int, float]
+        with self.assertRaises(TypeError):
+            u()
+        with self.assertRaises(TypeError):
+            type(u)()
+
+    def test_intersection_generalization(self):
+        self.assertFalse(Intersection[str, typing.Iterable[int]] == str)
+        self.assertFalse(Intersection[str, typing.Iterable[int]] == typing.Iterable[int])
+        self.assertIn(str, Intersection[str, typing.Iterable[int]].__args__)
+        self.assertIn(typing.Iterable[int], Intersection[str, typing.Iterable[int]].__args__)
+
+    def test_intersection_compare_other(self):
+        self.assertNotEqual(Intersection, object)
+        self.assertNotEqual(Intersection, Any)
+        self.assertNotEqual(ClassVar, Intersection)
+        self.assertNotEqual(Optional, Intersection)
+        self.assertNotEqual([None], Optional)
+        self.assertNotEqual(Optional, typing.Mapping)
+        self.assertNotEqual(Optional[typing.MutableMapping], Intersection)
+
+    def test_intersection_empty(self):
+        with self.assertRaises(TypeError):
+            Intersection[()]
+
+    def test_no_eval_intersection(self):
+        u = Intersection[int, str]
+        def f(x: u): ...
+        self.assertIs(get_type_hints(f)['x'], u)
+
+    def test_function_repr_intersection(self):
+        def fun() -> int: ...
+        self.assertEqual(repr(Intersection[fun, int]), 'typing.Intersection[fun, int]')
+
+    def test_intersection_str_pattern(self):
+        # Shouldn't crash; see http://bugs.python.org/issue25390
+        A = Intersection[str, Pattern]
+        A
+
+    def test_intersection_etree(self):
+        # See https://github.com/python/typing/issues/229
+        # (Only relevant for Python 2.)
+        from xml.etree.ElementTree import Element
+
+        Intersection[Element, str]  # Shouldn't crash
+
+        def Elem(*args):
+            return Element(*args)
+
+        Intersection[Elem, str]  # Nor should this
+
+    def test_intersection_of_literals(self):
+        self.assertEqual(Intersection[Literal[1], Literal[2]].__args__,
+                         (Literal[1], Literal[2]))
+        self.assertEqual(Intersection[Literal[1], Literal[1]],
+                         Literal[1])
+
+        self.assertEqual(Intersection[Literal[False], Literal[0]].__args__,
+                         (Literal[False], Literal[0]))
+        self.assertEqual(Intersection[Literal[True], Literal[1]].__args__,
+                         (Literal[True], Literal[1]))
+
+        import enum
+        class Ints(enum.IntEnum):
+            A = 0
+            B = 1
+
+        self.assertEqual(Intersection[Literal[Ints.A], Literal[Ints.A]],
+                         Literal[Ints.A])
+        self.assertEqual(Intersection[Literal[Ints.B], Literal[Ints.B]],
+                         Literal[Ints.B])
+
+        self.assertEqual(Intersection[Literal[Ints.A], Literal[Ints.B]].__args__,
+                         (Literal[Ints.A], Literal[Ints.B]))
+
+        self.assertEqual(Intersection[Literal[0], Literal[Ints.A], Literal[False]].__args__,
+                         (Literal[0], Literal[Ints.A], Literal[False]))
+        self.assertEqual(Intersection[Literal[1], Literal[Ints.B], Literal[True]].__args__,
+                         (Literal[1], Literal[Ints.B], Literal[True]))
+
+
 class UnionTests(BaseTestCase):
 
-    def test_basics(self):
+    def test_union_basics(self):
         u = Union[int, float]
         self.assertNotEqual(u, Union)
 
@@ -2015,12 +2298,12 @@ class UnionTests(BaseTestCase):
         with self.assertRaises(TypeError):
             isinstance(42, Union[Any, str])
 
-    def test_optional_isinstance(self):
+    def test_union_optional_isinstance(self):
         self.assertTrue(isinstance(42, Optional[int]))
         self.assertTrue(isinstance(None, Optional[int]))
         self.assertFalse(isinstance('abc', Optional[int]))
 
-    def test_optional_isinstance_type_error(self):
+    def test_union_optional_isinstance_type_error(self):
         with self.assertRaises(TypeError):
             isinstance(42, Optional[list[int]])
         with self.assertRaises(TypeError):
@@ -2054,7 +2337,7 @@ class UnionTests(BaseTestCase):
         with self.assertRaises(TypeError):
             issubclass(int, Union[list[int], str])
 
-    def test_optional_issubclass(self):
+    def test_union_optional_issubclass(self):
         self.assertTrue(issubclass(int, Optional[int]))
         self.assertTrue(issubclass(type(None), Optional[int]))
         self.assertFalse(issubclass(str, Optional[int]))
@@ -2062,7 +2345,7 @@ class UnionTests(BaseTestCase):
         self.assertTrue(issubclass(type(None), Optional[Any]))
         self.assertFalse(issubclass(int, Optional[Any]))
 
-    def test_optional_issubclass_type_error(self):
+    def test_union_optional_issubclass_type_error(self):
         with self.assertRaises(TypeError):
             issubclass(list[int], Optional[list[int]])
         with self.assertRaises(TypeError):
@@ -2090,16 +2373,16 @@ class UnionTests(BaseTestCase):
         self.assertNotEqual(u1, object)
         self.assertNotEqual(u2, object)
 
-    def test_unordered(self):
+    def test_union_unordered(self):
         u1 = Union[int, float]
         u2 = Union[float, int]
         self.assertEqual(u1, u2)
 
-    def test_single_class_disappears(self):
+    def test_union_single_class_disappears(self):
         t = Union[Employee]
         self.assertIs(t, Employee)
 
-    def test_base_class_kept(self):
+    def test_union_base_class_kept(self):
         u = Union[Employee, Manager]
         self.assertNotEqual(u, Employee)
         self.assertIn(Employee, u.__args__)
@@ -2130,7 +2413,7 @@ class UnionTests(BaseTestCase):
         with self.assertRaises(TypeError):
             hash(union3)
 
-    def test_repr(self):
+    def test_union_repr(self):
         self.assertEqual(repr(Union), 'typing.Union')
         u = Union[Employee, int]
         self.assertEqual(repr(u), 'typing.Union[%s.Employee, int]' % __name__)
@@ -2155,7 +2438,7 @@ class UnionTests(BaseTestCase):
         u = Optional[str]
         self.assertEqual(repr(u), 'typing.Optional[str]')
 
-    def test_dir(self):
+    def test_union_dir(self):
         dir_items = set(dir(Union[str, int]))
         for required_item in [
             '__args__', '__parameters__', '__origin__',
@@ -2163,7 +2446,7 @@ class UnionTests(BaseTestCase):
             with self.subTest(required_item=required_item):
                 self.assertIn(required_item, dir_items)
 
-    def test_cannot_subclass(self):
+    def test_union_cannot_subclass(self):
         with self.assertRaisesRegex(TypeError,
                 r'Cannot subclass typing\.Union'):
             class C(Union):
@@ -2176,7 +2459,7 @@ class UnionTests(BaseTestCase):
             class E(Union[int, str]):
                 pass
 
-    def test_cannot_instantiate(self):
+    def test_union_cannot_instantiate(self):
         with self.assertRaises(TypeError):
             Union()
         with self.assertRaises(TypeError):
@@ -2202,12 +2485,12 @@ class UnionTests(BaseTestCase):
         self.assertNotEqual(Optional, typing.Mapping)
         self.assertNotEqual(Optional[typing.MutableMapping], Union)
 
-    def test_optional(self):
+    def test_union_optional(self):
         o = Optional[int]
         u = Union[int, None]
         self.assertEqual(o, u)
 
-    def test_empty(self):
+    def test_union_empty(self):
         with self.assertRaises(TypeError):
             Union[()]
 
@@ -2225,7 +2508,7 @@ class UnionTests(BaseTestCase):
         A = Union[str, Pattern]
         A
 
-    def test_etree(self):
+    def test_union_etree(self):
         # See https://github.com/python/typing/issues/229
         # (Only relevant for Python 2.)
         from xml.etree.ElementTree import Element
@@ -2402,6 +2685,11 @@ class BaseCallableTests:
         Callable = self.Callable
         # Shouldn't crash; see https://github.com/python/typing/issues/259
         typing.List[Callable[..., str]]
+
+    def test_and_and_rand(self):
+        Callable = self.Callable
+        self.assertEqual(Callable & Tuple, Intersection[Callable, Tuple])
+        self.assertEqual(Tuple & Callable, Intersection[Tuple, Callable])
 
     def test_or_and_ror(self):
         Callable = self.Callable
@@ -4142,6 +4430,14 @@ class ProtocolTests(BaseTestCase):
         self.assertIsInstance(CI(), P)
         self.assertIsInstance(DI(), P)
 
+    def test_protocols_in_intersections(self):
+        class P(Protocol):
+            x = None  # type: int
+
+        Alias = typing.Intersection[typing.Iterable, P]
+        Alias2 = typing.Intersection[P, typing.Iterable]
+        self.assertEqual(Alias, Alias2)
+
     def test_protocols_in_unions(self):
         class P(Protocol):
             x = None  # type: int
@@ -4827,6 +5123,7 @@ class GenericTests(BaseTestCase):
         T = TypeVar('T')
         class Meta(type): ...
         self.assertEqual(Type[Meta], Type[Meta])
+        self.assertEqual(Intersection[T, int][Meta], Intersection[Meta, int])
         self.assertEqual(Union[T, int][Meta], Union[Meta, int])
         self.assertEqual(Callable[..., Meta].__args__, (Ellipsis, Meta))
 
@@ -4859,9 +5156,12 @@ class GenericTests(BaseTestCase):
 
         self.assertNotEqual(Tuple[A[str]], Tuple[B.A[str]])
         self.assertNotEqual(Tuple[A[List[Any]]], Tuple[B.A[List[Any]]])
+        self.assertNotEqual(Intersection[str, A[str]], Intersection[str, mod_generics_cache.A[str]])
+        self.assertNotEqual(Intersection[A[str], A[str]], Intersection[A[str],
+                            mod_generics_cache.A[str]])
         self.assertNotEqual(Union[str, A[str]], Union[str, mod_generics_cache.A[str]])
-        self.assertNotEqual(Union[A[str], A[str]],
-                            Union[A[str], mod_generics_cache.A[str]])
+        self.assertNotEqual(Union[A[str], A[str]], Union[A[str],
+                            mod_generics_cache.A[str]])
         self.assertNotEqual(typing.FrozenSet[A[str]],
                             typing.FrozenSet[mod_generics_cache.B.A[str]])
 
@@ -4880,18 +5180,25 @@ class GenericTests(BaseTestCase):
         with self.assertRaises(TypeError):
             Tuple[T, int][()]
 
+        self.assertEqual(Intersection[T, int][int], int)
+        self.assertEqual(Intersection[T, U][int, Intersection[int, str]], Intersection[int, str])
         self.assertEqual(Union[T, int][int], int)
         self.assertEqual(Union[T, U][int, Union[int, str]], Union[int, str])
         class Base: ...
         class Derived(Base): ...
+        self.assertEqual(Intersection[T, Base][Intersection[Base, Derived]], Intersection[Base, Derived])
         self.assertEqual(Union[T, Base][Union[Base, Derived]], Union[Base, Derived])
         self.assertEqual(Callable[[T], T][KT], Callable[[KT], KT])
         self.assertEqual(Callable[..., List[T]][int], Callable[..., List[int]])
 
     def test_extended_generic_rules_repr(self):
         T = TypeVar('T')
-        self.assertEqual(repr(Union[Tuple, Callable]).replace('typing.', ''),
-                         'Union[Tuple, Callable]')
+        self.assertEqual(repr(Intersection[Tuple, Callable]).replace('typing.', ''),
+                         'Intersection[Tuple, Callable]')
+        self.assertEqual(repr(Intersection[Tuple, Tuple[int]]).replace('typing.', ''),
+                         'Intersection[Tuple, Tuple[int]]')
+        self.assertEqual(repr(Intersection[Tuple, Callable]).replace('typing.', ''),
+                         'Intersection[Tuple, Callable]')
         self.assertEqual(repr(Union[Tuple, Tuple[int]]).replace('typing.', ''),
                          'Union[Tuple, Tuple[int]]')
         self.assertEqual(repr(Callable[..., Optional[T]][int]).replace('typing.', ''),
@@ -5075,7 +5382,9 @@ class GenericTests(BaseTestCase):
         with self.assertRaises(TypeError):
             issubclass(Tuple[int, ...], typing.Iterable)
 
-    def test_fail_with_bare_union(self):
+    def test_fail_with_bare_union_or_intersection(self):
+        with self.assertRaises(TypeError):
+            List[Intersection]
         with self.assertRaises(TypeError):
             List[Union]
         with self.assertRaises(TypeError):
@@ -5143,9 +5452,9 @@ class GenericTests(BaseTestCase):
             self.assertEqual(x.foo, 42)
             self.assertEqual(x.bar, 'abc')
             self.assertEqual(x.__dict__, {'foo': 42, 'bar': 'abc'})
-        samples = [Any, Union, Tuple, Callable, ClassVar,
-                   Union[int, str], ClassVar[List], Tuple[int, ...], Tuple[()],
-                   Callable[[str], bytes],
+        samples = [Any, Intersection, Union, Tuple, Callable, ClassVar,
+                   Intersection[int, str], Union[int, str], ClassVar[List],
+                   Tuple[int, ...], Tuple[()], Callable[[str], bytes],
                    typing.DefaultDict, typing.FrozenSet[int]]
         for s in samples:
             for proto in range(pickle.HIGHEST_PROTOCOL + 1):
@@ -5175,12 +5484,12 @@ class GenericTests(BaseTestCase):
     def test_copy_and_deepcopy(self):
         T = TypeVar('T')
         class Node(Generic[T]): ...
-        things = [Union[T, int], Tuple[T, int], Tuple[()],
+        things = [Intersection[T, int], Union[T, int], Tuple[T, int], Tuple[()],
                   Callable[..., T], Callable[[int], int],
                   Tuple[Any, Any], Node[T], Node[int], Node[Any], typing.Iterable[T],
                   typing.Iterable[Any], typing.Iterable[int], typing.Dict[int, str],
                   typing.Dict[T, Any], ClassVar[int], ClassVar[List[T]], Tuple['T', 'T'],
-                  Union['T', int], List['T'], typing.Mapping['T', int]]
+                  Intersection['T', int], Union['T', int], List['T'], typing.Mapping['T', int]]
         for t in things + [Any]:
             self.assertEqual(t, copy(t))
             self.assertEqual(t, deepcopy(t))
@@ -5195,7 +5504,7 @@ class GenericTests(BaseTestCase):
         PP = ParamSpec('PP')
         for X in [TP, TPB, TPV, PP,
                   List, typing.Mapping, ClassVar, typing.Iterable,
-                  Union, Any, Tuple, Callable]:
+                  Intersection, Union, Any, Tuple, Callable]:
             with self.subTest(thing=X):
                 self.assertIs(copy(X), X)
                 self.assertIs(deepcopy(X), X)
@@ -5239,8 +5548,8 @@ class GenericTests(BaseTestCase):
 
     def test_weakref_all(self):
         T = TypeVar('T')
-        things = [Any, Union[T, int], Callable[..., T], Tuple[Any, Any],
-                  Optional[List[int]], typing.Mapping[int, str],
+        things = [Any, Intersection[T, int], Union[T, int], Callable[..., T],
+                  Tuple[Any, Any], Optional[List[int]], typing.Mapping[int, str],
                   typing.Match[bytes], typing.Iterable['whatever']]
         for t in things:
             self.assertEqual(weakref.ref(t)(), t)
@@ -5619,6 +5928,7 @@ class GenericTests(BaseTestCase):
         for obj in (
             ClassVar[int],
             Final[int],
+            Intersection[int, float],
             Union[int, float],
             Optional[int],
             Literal[1, 2],
@@ -5652,7 +5962,8 @@ class GenericTests(BaseTestCase):
             __parameters__ = (T,)
         # Bare classes should be skipped
         for a in (List, list):
-            for b in (A, int, TypeVar, TypeVarTuple, ParamSpec, types.GenericAlias, types.UnionType):
+            for b in (A, int, TypeVar, TypeVarTuple, ParamSpec, types.GenericAlias,
+                      types.IntersectionType, types.UnionType):
                 with self.subTest(generic=a, sub=b):
                     with self.assertRaisesRegex(TypeError, '.* is not a generic class'):
                         a[b][str]
@@ -5671,7 +5982,7 @@ class GenericTests(BaseTestCase):
 
         for s in (int, G, A, List, list,
                   TypeVar, TypeVarTuple, ParamSpec,
-                  types.GenericAlias, types.UnionType):
+                  types.GenericAlias, types.IntersectionType, types.UnionType):
 
             for t in Tuple, tuple:
                 with self.subTest(tuple=t, sub=s):
@@ -5994,6 +6305,7 @@ class CastTests(BaseTestCase):
         self.assertIs(type(cast(float, 42)), int)
         self.assertEqual(cast(Any, 42), 42)
         self.assertEqual(cast(list, 42), 42)
+        self.assertEqual(cast(Intersection[str, float], 42), 42)
         self.assertEqual(cast(Union[str, float], 42), 42)
         self.assertEqual(cast(AnyStr, 42), 42)
         self.assertEqual(cast(None, 42), 42)
@@ -6110,6 +6422,8 @@ class ForwardRefTests(BaseTestCase):
         self.assertEqual(List[c1], List[c1_gth])
         self.assertNotEqual(List[c1], List[C])
         self.assertNotEqual(List[c1_gth], List[C])
+        self.assertEqual(Intersection[c1, c1_gth], Intersection[c1])
+        self.assertEqual(Intersection[c1, c1_gth, int], Intersection[c1, int])
         self.assertEqual(Union[c1, c1_gth], Union[c1])
         self.assertEqual(Union[c1, c1_gth, int], Union[c1, int])
 
@@ -6163,6 +6477,20 @@ class ForwardRefTests(BaseTestCase):
         self.assertEqual(repr(List['int']), "typing.List[ForwardRef('int')]")
         self.assertEqual(repr(List[ForwardRef('int', module='mod')]),
                          "typing.List[ForwardRef('int', module='mod')]")
+
+    def test_intersection_forward(self):
+
+        def foo(a: Intersection['T']):
+            pass
+
+        self.assertEqual(get_type_hints(foo, globals(), locals()),
+                         {'a': Intersection[T]})
+
+        def foo(a: tuple[ForwardRef('T')] & int):
+            pass
+
+        self.assertEqual(get_type_hints(foo, globals(), locals()),
+                         {'a': tuple[T] & int})
 
     def test_union_forward(self):
 
@@ -6223,6 +6551,41 @@ class ForwardRefTests(BaseTestCase):
             r2 = namespace2()
             self.assertIsNot(r1, r2)
             self.assertRaises(RecursionError, cmp, r1, r2)
+
+    def test_intersection_forward_recursion(self):
+        ValueList = List['Value']
+        Value = Intersection[str, ValueList]
+
+        class C:
+            foo: List[Value]
+
+        class D:
+            foo: Intersection[Value, ValueList]
+
+        class E:
+            foo: Intersection[List[Value], ValueList]
+
+        class F:
+            foo: Intersection[Value, List[Value], ValueList]
+
+        self.assertEqual(get_type_hints(C, globals(), locals()), get_type_hints(C, globals(), locals()))
+        self.assertEqual(get_type_hints(C, globals(), locals()),
+                         {'foo': List[Intersection[str, List[Intersection[str, List['Value']]]]]})
+        self.assertEqual(get_type_hints(D, globals(), locals()),
+                         {'foo': Intersection[str, List[Intersection[str, List['Value']]]]})
+        self.assertEqual(get_type_hints(E, globals(), locals()),
+                         {'foo': Intersection[
+                             List[Intersection[str, List[Intersection[str, List['Value']]]]],
+                             List[Intersection[str, List['Value']]]
+                         ]
+                          })
+        self.assertEqual(get_type_hints(F, globals(), locals()),
+                         {'foo': Intersection[
+                             str,
+                             List[Intersection[str, List['Value']]],
+                             List[Intersection[str, List[Intersection[str, List['Value']]]]]
+                         ]
+                          })
 
     def test_union_forward_recursion(self):
         ValueList = List['Value']
@@ -6494,6 +6857,12 @@ class ForwardRefTests(BaseTestCase):
         self.assertEqual(gth(Loop, globals())['attr'], Final[Loop])
         self.assertNotEqual(gth(Loop, globals())['attr'], Final[int])
         self.assertNotEqual(gth(Loop, globals())['attr'], Final)
+
+    def test_and(self):
+        X = ForwardRef('X')
+        # __and__/__rand__ itself
+        self.assertEqual(X & "x", Intersection[X, "x"])
+        self.assertEqual("x" & X, Intersection["x", X])
 
     def test_or(self):
         X = ForwardRef('X')
@@ -6947,10 +7316,14 @@ class GetTypeHintTests(BaseTestCase):
         )
 
         def barfoo2(x: typing.Callable[..., Annotated[List[T], "const"]],
-                    y: typing.Union[int, Annotated[T, "mutable"]]): ...
+                    y: typing.Intersection[int, Annotated[T, "mutable"]],
+                    z: typing.Union[int, Annotated[T, "mutable"]]): ...
         self.assertEqual(
-            get_type_hints(barfoo2, globals(), locals()),
-            {'x': typing.Callable[..., List[T]], 'y': typing.Union[int, T]}
+            get_type_hints(barfoo2, globals(), locals()), {
+                'x': typing.Callable[..., List[T]],
+                'y': typing.Intersection[int, T],
+                'z': typing.Union[int, T]
+            }
         )
 
         BA2 = typing.Callable[..., List[T]]
@@ -6968,6 +7341,15 @@ class GetTypeHintTests(BaseTestCase):
         self.assertEqual(
             get_type_hints(barfoo4, globals(), locals(), include_extras=True),
             {"x": typing.Annotated[int | float, "const"]}
+        )
+
+    def test_get_type_hints_annotated_in_intersection(self):  # bpo-46603
+        def with_intersection(x: int & list[Annotated[str, 'meta']]): ...
+
+        self.assertEqual(get_type_hints(with_intersection), {'x': int & list[str]})
+        self.assertEqual(
+            get_type_hints(with_intersection, include_extras=True),
+            {'x': int & list[Annotated[str, 'meta']]},
         )
 
     def test_get_type_hints_annotated_in_union(self):  # bpo-46603
@@ -7122,6 +7504,7 @@ class GetUtilitiesTestCase(TestCase):
         self.assertIs(get_origin(C[T]), C)
         self.assertIs(get_origin(int), None)
         self.assertIs(get_origin(ClassVar[int]), ClassVar)
+        self.assertIs(get_origin(Intersection[int, str]), Intersection)
         self.assertIs(get_origin(Union[int, str]), Union)
         self.assertIs(get_origin(Literal[42, 43]), Literal)
         self.assertIs(get_origin(Final[List[int]]), Final)
@@ -7134,6 +7517,7 @@ class GetUtilitiesTestCase(TestCase):
         self.assertIs(get_origin(Callable), collections.abc.Callable)
         self.assertIs(get_origin(list[int]), list)
         self.assertIs(get_origin(list), None)
+        self.assertIs(get_origin(list & str), types.IntersectionType)
         self.assertIs(get_origin(list | str), types.UnionType)
         self.assertIs(get_origin(P.args), P)
         self.assertIs(get_origin(P.kwargs), P)
@@ -7159,10 +7543,13 @@ class GetUtilitiesTestCase(TestCase):
         self.assertEqual(get_args(Self), ())
         self.assertEqual(get_args(LiteralString), ())
         self.assertEqual(get_args(ClassVar[int]), (int,))
+        self.assertEqual(get_args(Intersection[int, str]), (int, str))
         self.assertEqual(get_args(Union[int, str]), (int, str))
         self.assertEqual(get_args(Literal[42, 43]), (42, 43))
         self.assertEqual(get_args(Final[List[int]]), (List[int],))
         self.assertEqual(get_args(Optional[int]), (int, type(None)))
+        self.assertEqual(get_args(Intersection[int, Tuple[T, int]][str]),
+                         (int, Tuple[str, int]))
         self.assertEqual(get_args(Union[int, None]), (int, type(None)))
         self.assertEqual(get_args(Union[int, Tuple[T, int]][str]),
                          (int, Tuple[str, int]))
@@ -7171,6 +7558,8 @@ class GetUtilitiesTestCase(TestCase):
         self.assertEqual(get_args(Callable[[], T][int]), ([], int))
         self.assertEqual(get_args(Callable[..., int]), (..., int))
         self.assertEqual(get_args(Callable[[int], str]), ([int], str))
+        self.assertEqual(get_args(Intersection[int, Callable[[Tuple[T, ...]], str]]),
+                         (int, Callable[[Tuple[T, ...]], str]))
         self.assertEqual(get_args(Union[int, Callable[[Tuple[T, ...]], str]]),
                          (int, Callable[[Tuple[T, ...]], str]))
         self.assertEqual(get_args(Tuple[int, ...]), (int, ...))
@@ -7689,6 +8078,10 @@ class CollectionsAbcTests(BaseTestCase):
         A.register(B)
         self.assertIsSubclass(B, typing.Mapping)
 
+    def test_and_and_rand(self):
+        self.assertEqual(typing.Sized & typing.Awaitable, Intersection[typing.Sized, typing.Awaitable])
+        self.assertEqual(typing.Coroutine & typing.Hashable, Intersection[typing.Coroutine, typing.Hashable])
+
     def test_or_and_ror(self):
         self.assertEqual(typing.Sized | typing.Awaitable, Union[typing.Sized, typing.Awaitable])
         self.assertEqual(typing.Coroutine | typing.Hashable, Union[typing.Coroutine, typing.Hashable])
@@ -7809,6 +8202,15 @@ class NewTypeTests(BaseTestCase):
         with self.assertRaises(TypeError):
             class D(UserId):
                 pass
+
+    def test_and(self):
+        for cls in (int, self.UserName):
+            with self.subTest(cls=cls):
+                self.assertEqual(UserId & cls, typing.Intersection[UserId, cls])
+                self.assertEqual(cls & UserId, typing.Intersection[cls, UserId])
+
+                self.assertEqual(typing.get_args(UserId & cls), (UserId, cls))
+                self.assertEqual(typing.get_args(cls & UserId), (cls, UserId))
 
     def test_or(self):
         for cls in (int, self.UserName):
@@ -8578,6 +8980,7 @@ class TypedDictTests(BaseTestCase):
 
     def test_is_typeddict(self):
         self.assertIs(is_typeddict(Point2D), True)
+        self.assertIs(is_typeddict(Intersection[str, int]), False)
         self.assertIs(is_typeddict(Union[str, int]), False)
         # classes, not instances
         self.assertIs(is_typeddict(Point2D()), False)
@@ -9031,6 +9434,8 @@ class RETests(BaseTestCase):
         self.assertIsInstance(mat, Match)
 
         # these should just work
+        Pattern[Intersection[str, bytes]]
+        Match[Intersection[bytes, str]]
         Pattern[Union[str, bytes]]
         Match[Union[bytes, str]]
 
@@ -9041,6 +9446,9 @@ class RETests(BaseTestCase):
         self.assertNotEqual(Pattern[str], str)
 
     def test_errors(self):
+        m = Match[Intersection[str, bytes]]
+        with self.assertRaises(TypeError):
+            m[str]
         m = Match[Union[str, bytes]]
         with self.assertRaises(TypeError):
             m[str]
@@ -9106,6 +9514,76 @@ class AnnotatedTests(BaseTestCase):
         self.assertEqual(A, Annotated[int, 4, 5])
         self.assertEqual(A.__metadata__, (4, 5))
         self.assertEqual(A.__origin__, int)
+
+    def test_deduplicate_from_intersection(self):
+        # Regular:
+        self.assertEqual(get_args(Annotated[int, 1] & int),
+                         (Annotated[int, 1], int))
+        self.assertEqual(get_args(Intersection[Annotated[int, 1], int]),
+                         (Annotated[int, 1], int))
+        self.assertEqual(get_args(Annotated[int, 1] & Annotated[int, 2] & int),
+                         (Annotated[int, 1], Annotated[int, 2], int))
+        self.assertEqual(get_args(Intersection[Annotated[int, 1], Annotated[int, 2], int]),
+                         (Annotated[int, 1], Annotated[int, 2], int))
+        self.assertEqual(get_args(Annotated[int, 1] & Annotated[str, 1] & int),
+                         (Annotated[int, 1], Annotated[str, 1], int))
+        self.assertEqual(get_args(Intersection[Annotated[int, 1], Annotated[str, 1], int]),
+                         (Annotated[int, 1], Annotated[str, 1], int))
+
+        # Duplicates:
+        self.assertEqual(Annotated[int, 1] & Annotated[int, 1] & int,
+                         Annotated[int, 1] & int)
+        self.assertEqual(Intersection[Annotated[int, 1], Annotated[int, 1], int],
+                        Intersection[Annotated[int, 1], int])
+
+        # Unhashable metadata:
+        self.assertEqual(get_args(str & Annotated[int, {}] & Annotated[int, set()] & int),
+                         (str, Annotated[int, {}], Annotated[int, set()], int))
+        self.assertEqual(get_args(Intersection[str, Annotated[int, {}], Annotated[int, set()], int]),
+                         (str, Annotated[int, {}], Annotated[int, set()], int))
+        self.assertEqual(get_args(str & Annotated[int, {}] & Annotated[str, {}] & int),
+                         (str, Annotated[int, {}], Annotated[str, {}], int))
+        self.assertEqual(get_args(Intersection[str, Annotated[int, {}], Annotated[str, {}], int]),
+                         (str, Annotated[int, {}], Annotated[str, {}], int))
+
+        self.assertEqual(get_args(Annotated[int, 1] & str & Annotated[str, {}] & int),
+                         (Annotated[int, 1], str, Annotated[str, {}], int))
+        self.assertEqual(get_args(Intersection[Annotated[int, 1], str, Annotated[str, {}], int]),
+                         (Annotated[int, 1], str, Annotated[str, {}], int))
+
+        import dataclasses
+        @dataclasses.dataclass
+        class ValueRange:
+            lo: int
+            hi: int
+        v = ValueRange(1, 2)
+        self.assertEqual(get_args(Annotated[int, v] & None),
+                         (Annotated[int, v], types.NoneType))
+        self.assertEqual(get_args(Intersection[Annotated[int, v], None]),
+                         (Annotated[int, v], types.NoneType))
+        self.assertEqual(get_args(Optional[Annotated[int, v]]),
+                         (Annotated[int, v], types.NoneType))
+
+        # Unhashable metadata duplicated:
+        self.assertEqual(Annotated[int, {}] & Annotated[int, {}] & int,
+                         Annotated[int, {}] & int)
+        self.assertEqual(Annotated[int, {}] & Annotated[int, {}] & int,
+                         int & Annotated[int, {}])
+        self.assertEqual(Intersection[Annotated[int, {}], Annotated[int, {}], int],
+                        Intersection[Annotated[int, {}], int])
+        self.assertEqual(Intersection[Annotated[int, {}], Annotated[int, {}], int],
+                        Intersection[int, Annotated[int, {}]])
+
+    def test_order_in_intersection(self):
+        expr1 = Annotated[int, 1] & str & Annotated[str, {}] & int
+        for args in itertools.permutations(get_args(expr1)):
+            with self.subTest(args=args):
+                self.assertEqual(expr1, reduce(operator.and_, args))
+
+        expr2 = Intersection[Annotated[int, 1], str, Annotated[str, {}], int]
+        for args in itertools.permutations(get_args(expr2)):
+            with self.subTest(args=args):
+                self.assertEqual(expr2, Intersection[args])
 
     def test_deduplicate_from_union(self):
         # Regular:
@@ -9320,9 +9798,13 @@ class AnnotatedTests(BaseTestCase):
             Annotated[int]
 
     def test_pickle(self):
-        samples = [typing.Any, typing.Union[int, str],
-                   typing.Optional[str], Tuple[int, ...],
-                   typing.Callable[[str], bytes]]
+        samples = [
+            typing.Any,
+            typing.Intersection[int, str],
+            typing.Union[int, str],
+            typing.Optional[str], Tuple[int, ...],
+            typing.Callable[[str], bytes]
+        ]
 
         for t in samples:
             x = Annotated[t, "a"]
@@ -9786,7 +10268,9 @@ class ParamSpecTests(BaseTestCase):
     def test_bad_var_substitution(self):
         T = TypeVar('T')
         P = ParamSpec('P')
-        bad_args = (42, int, None, T, int|str, Union[int, str])
+        bad_args = (42, int, None, T,
+                    int&str, Intersection[int, str],
+                    int|str, Union[int, str])
         for arg in bad_args:
             with self.subTest(arg=arg):
                 with self.assertRaises(TypeError):
@@ -10242,6 +10726,7 @@ class SpecialAttrsTests(BaseTestCase):
             typing.TypeGuard: 'TypeGuard',
             typing.TypeIs: 'TypeIs',
             typing.TypeVar: 'TypeVar',
+            typing.Intersection: 'Intersection',
             typing.Union: 'Union',
             typing.Self: 'Self',
             # Subscribed special forms
@@ -10256,6 +10741,8 @@ class SpecialAttrsTests(BaseTestCase):
             typing.Optional[Any]: 'Optional',
             typing.TypeGuard[Any]: 'TypeGuard',
             typing.TypeIs[Any]: 'TypeIs',
+            typing.Intersection[Any]: 'Any',
+            typing.Intersection[int, float]: 'Intersection',
             typing.Union[Any]: 'Any',
             typing.Union[int, float]: 'Union',
             # Incompatible special forms (tested in test_special_attrs2)
@@ -10531,6 +11018,9 @@ class AllTests(BaseTestCase):
 class TypeIterationTests(BaseTestCase):
     _UNITERABLE_TYPES = (
         Any,
+        Intersection,
+        Intersection[str, int],
+        Intersection[str, T],
         Union,
         Union[str, int],
         Union[str, T],

@@ -864,6 +864,10 @@ def singledispatch(func):
             dispatch_cache[cls] = impl
         return impl
 
+    def _is_intersection_type(cls):
+        from typing import get_origin, Intersection
+        return get_origin(cls) in {Intersection, types.IntersectionType}
+
     def _is_union_type(cls):
         from typing import get_origin, Union
         return get_origin(cls) in {Union, types.UnionType}
@@ -872,7 +876,7 @@ def singledispatch(func):
         if isinstance(cls, type):
             return True
         from typing import get_args
-        return (_is_union_type(cls) and
+        return ((_is_union_type(cls) or _is_intersection_type(cls)) and
                 all(isinstance(arg, type) for arg in get_args(cls)))
 
     def register(cls, func=None):
@@ -889,7 +893,7 @@ def singledispatch(func):
             if func is not None:
                 raise TypeError(
                     f"Invalid first argument to `register()`. "
-                    f"{cls!r} is not a class or union type."
+                    f"{cls!r} is not a class or union or intersection type."
                 )
             ann = getattr(cls, '__annotations__', {})
             if not ann:
@@ -904,7 +908,7 @@ def singledispatch(func):
             from typing import get_type_hints
             argname, cls = next(iter(get_type_hints(func).items()))
             if not _is_valid_dispatch_type(cls):
-                if _is_union_type(cls):
+                if _is_union_type(cls) or _is_intersection_type(cls):
                     raise TypeError(
                         f"Invalid annotation for {argname!r}. "
                         f"{cls!r} not all arguments are classes."
@@ -915,7 +919,7 @@ def singledispatch(func):
                         f"{cls!r} is not a class."
                     )
 
-        if _is_union_type(cls):
+        if _is_union_type(cls) or _is_intersection_type(cls):
             from typing import get_args
 
             for arg in get_args(cls):

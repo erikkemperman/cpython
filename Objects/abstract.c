@@ -6,6 +6,7 @@
 #include "pycore_call.h"          // _PyObject_CallNoArgs()
 #include "pycore_ceval.h"         // _Py_EnterRecursiveCallTstate()
 #include "pycore_crossinterp.h"   // _Py_CallInInterpreter()
+#include "pycore_intersectionobject.h"  // _PyIntersection_Check()
 #include "pycore_object.h"        // _Py_CheckSlotResult()
 #include "pycore_long.h"          // _Py_IsNegative
 #include "pycore_pyerrors.h"      // _PyErr_Occurred()
@@ -2658,7 +2659,8 @@ object_isinstance(PyObject *inst, PyObject *cls)
     }
     else {
         if (!check_class(cls,
-            "isinstance() arg 2 must be a type, a tuple of types, or a union"))
+            "isinstance() arg 2 must be a type, a tuple of types, or a union"
+            " or an intersection"))
             return -1;
         retval = PyObject_GetOptionalAttr(inst, &_Py_ID(__class__), &icls);
         if (icls != NULL) {
@@ -2683,6 +2685,10 @@ object_recursive_isinstance(PyThreadState *tstate, PyObject *inst, PyObject *cls
         return object_isinstance(inst, cls);
     }
 
+    if (_PyIntersection_Check(cls)) {
+        cls = _Py_intersection_args(cls);
+    }
+    // TODO else?
     if (_PyUnion_Check(cls)) {
         cls = _Py_union_args(cls);
     }
@@ -2754,9 +2760,10 @@ recursive_issubclass(PyObject *derived, PyObject *cls)
                      "issubclass() arg 1 must be a class"))
         return -1;
 
-    if (!_PyUnion_Check(cls) && !check_class(cls,
+    if (!_PyUnion_Check(cls) && !_PyIntersection_Check(cls) && !check_class(cls,
                             "issubclass() arg 2 must be a class,"
-                            " a tuple of classes, or a union")) {
+                            " a tuple of classes, or a union"
+                            " or an intersection")) {
         return -1;
     }
 
@@ -2776,6 +2783,10 @@ object_issubclass(PyThreadState *tstate, PyObject *derived, PyObject *cls)
         return recursive_issubclass(derived, cls);
     }
 
+    if (_PyIntersection_Check(cls)) {
+        cls = _Py_intersection_args(cls);
+    }
+    // TODO else?
     if (_PyUnion_Check(cls)) {
         cls = _Py_union_args(cls);
     }

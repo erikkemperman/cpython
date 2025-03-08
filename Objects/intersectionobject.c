@@ -1,25 +1,25 @@
 // types.IntersectionType -- used to represent e.g. Intersection[int, str], int & str
 #include "Python.h"
-#include "pycore_object.h"              // _PyObject_GC_TRACK/UNTRACK
-#include "pycore_typevarobject.h"       // _PyTypeAlias_Type
-#include "pycore_intersectionobject.h"  // _Py_intersection_type_and, _PyIntersection_Check
-#include "pycore_unionobject.h"
+#include "pycore_object.h"         // _PyObject_GC_TRACK/UNTRACK
+#include "pycore_typevarobject.h"  // _PyTypeAlias_Type
+#include "pycore_unionobject.h"    // _Py_union_type_or, _PyUnion_Check
+#include "pycore_intersectionobject.h"
 
 
 
-static PyObject *make_union(PyObject *);
+static PyObject *make_intersection(PyObject *);
 
 
 typedef struct {
     PyObject_HEAD
     PyObject *args;
     PyObject *parameters;
-} unionobject;
+} intersectionobject;
 
 static void
-unionobject_dealloc(PyObject *self)
+intersectionobject_dealloc(PyObject *self)
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
 
     _PyObject_GC_UNTRACK(self);
 
@@ -29,18 +29,18 @@ unionobject_dealloc(PyObject *self)
 }
 
 static int
-union_traverse(PyObject *self, visitproc visit, void *arg)
+intersection_traverse(PyObject *self, visitproc visit, void *arg)
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
     Py_VISIT(alias->args);
     Py_VISIT(alias->parameters);
     return 0;
 }
 
 static Py_hash_t
-union_hash(PyObject *self)
+intersection_hash(PyObject *self)
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
     PyObject *args = PyFrozenSet_New(alias->args);
     if (args == NULL) {
         return (Py_hash_t)-1;
@@ -51,17 +51,17 @@ union_hash(PyObject *self)
 }
 
 static PyObject *
-union_richcompare(PyObject *a, PyObject *b, int op)
+intersection_richcompare(PyObject *a, PyObject *b, int op)
 {
-    if (!_PyUnion_Check(b) || (op != Py_EQ && op != Py_NE)) {
+    if (!_PyIntersection_Check(b) || (op != Py_EQ && op != Py_NE)) {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    PyObject *a_set = PySet_New(((unionobject*)a)->args);
+    PyObject *a_set = PySet_New(((intersectionobject*)a)->args);
     if (a_set == NULL) {
         return NULL;
     }
-    PyObject *b_set = PySet_New(((unionobject*)b)->args);
+    PyObject *b_set = PySet_New(((intersectionobject*)b)->args);
     if (b_set == NULL) {
         Py_DECREF(a_set);
         return NULL;
@@ -76,7 +76,7 @@ static int
 is_same(PyObject *left, PyObject *right)
 {
     int is_rich = (_PyGenericAlias_Check(left) && _PyGenericAlias_Check(right))
-                    || (_PyIntersection_Check(left) && _PyIntersection_Check(right));
+                    || (_PyUnion_Check(left) && _PyUnion_Check(right));
     return is_rich ? PyObject_RichCompareBool(left, right, Py_EQ) : left == right;
 }
 
@@ -136,8 +136,8 @@ get_types(PyObject **obj, Py_ssize_t *size)
     if (*obj == Py_None) {
         *obj = (PyObject *)&_PyNone_Type;
     }
-    if (_PyUnion_Check(*obj)) {
-        PyObject *args = ((unionobject *) *obj)->args;
+    if (_PyIntersection_Check(*obj)) {
+        PyObject *args = ((intersectionobject *) *obj)->args;
         *size = PyTuple_GET_SIZE(args);
         return &PyTuple_GET_ITEM(args, 0);
     }
@@ -148,7 +148,7 @@ get_types(PyObject **obj, Py_ssize_t *size)
 }
 
 static int
-is_unionable(PyObject *obj)
+is_intersectionable(PyObject *obj)
 {
     if (obj == Py_None ||
         PyType_Check(obj) ||
@@ -162,9 +162,9 @@ is_unionable(PyObject *obj)
 }
 
 PyObject *
-_Py_union_type_or(PyObject* self, PyObject* other)
+_Py_intersection_type_and(PyObject* self, PyObject* other)
 {
-    if (!is_unionable(self) || !is_unionable(other)) {
+    if (!is_intersectionable(self) || !is_intersectionable(other)) {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -179,13 +179,13 @@ _Py_union_type_or(PyObject* self, PyObject* other)
         return Py_NewRef(self);
     }
 
-    PyObject *new_union = make_union(tuple);
+    PyObject *new_intersection = make_intersection(tuple);
     Py_DECREF(tuple);
-    return new_union;
+    return new_intersection;
 }
 
 static int
-union_repr_item(_PyUnicodeWriter *writer, PyObject *p)
+intersection_repr_item(_PyUnicodeWriter *writer, PyObject *p)
 {
     PyObject *qualname = NULL;
     PyObject *module = NULL;
@@ -197,7 +197,7 @@ union_repr_item(_PyUnicodeWriter *writer, PyObject *p)
         return _PyUnicodeWriter_WriteASCIIString(writer, "None", 4);
     }
 
-    if (_PyIntersection_Check(p)) {
+    if (_PyUnion_Check(p)) {
         parens = 1;
         goto use_repr;
     }
@@ -254,19 +254,19 @@ exit:
 }
 
 static PyObject *
-union_repr(PyObject *self)
+intersection_repr(PyObject *self)
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
     Py_ssize_t len = PyTuple_GET_SIZE(alias->args);
 
     _PyUnicodeWriter writer;
     _PyUnicodeWriter_Init(&writer);
     for (Py_ssize_t i = 0; i < len; i++) {
-        if (i > 0 && _PyUnicodeWriter_WriteASCIIString(&writer, " | ", 3) < 0) {
+        if (i > 0 && _PyUnicodeWriter_WriteASCIIString(&writer, " & ", 3) < 0) {
             goto error;
         }
         PyObject *p = PyTuple_GET_ITEM(alias->args, i);
-        if (union_repr_item(&writer, p) < 0) {
+        if (intersection_repr_item(&writer, p) < 0) {
             goto error;
         }
     }
@@ -276,15 +276,15 @@ error:
     return NULL;
 }
 
-static PyMemberDef union_members[] = {
-        {"__args__", _Py_T_OBJECT, offsetof(unionobject, args), Py_READONLY},
+static PyMemberDef intersection_members[] = {
+        {"__args__", _Py_T_OBJECT, offsetof(intersectionobject, args), Py_READONLY},
         {0}
 };
 
 static PyObject *
-union_getitem(PyObject *self, PyObject *item)
+intersection_getitem(PyObject *self, PyObject *item)
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
     // Populate __parameters__ if needed.
     if (alias->parameters == NULL) {
         alias->parameters = _Py_make_parameters(alias->args);
@@ -301,13 +301,13 @@ union_getitem(PyObject *self, PyObject *item)
     PyObject *res;
     Py_ssize_t nargs = PyTuple_GET_SIZE(newargs);
     if (nargs == 0) {
-        res = make_union(newargs);
+        res = make_intersection(newargs);
     }
     else {
         res = Py_NewRef(PyTuple_GET_ITEM(newargs, 0));
         for (Py_ssize_t iarg = 1; iarg < nargs; iarg++) {
             PyObject *arg = PyTuple_GET_ITEM(newargs, iarg);
-            Py_SETREF(res, PyNumber_Or(res, arg));
+            Py_SETREF(res, PyNumber_And(res, arg));
             if (res == NULL) {
                 break;
             }
@@ -317,14 +317,14 @@ union_getitem(PyObject *self, PyObject *item)
     return res;
 }
 
-static PyMappingMethods union_as_mapping = {
-    .mp_subscript = union_getitem,
+static PyMappingMethods intersection_as_mapping = {
+    .mp_subscript = intersection_getitem,
 };
 
 static PyObject *
-union_parameters(PyObject *self, void *Py_UNUSED(unused))
+intersection_parameters(PyObject *self, void *Py_UNUSED(unused))
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
     if (alias->parameters == NULL) {
         alias->parameters = _Py_make_parameters(alias->args);
         if (alias->parameters == NULL) {
@@ -334,13 +334,13 @@ union_parameters(PyObject *self, void *Py_UNUSED(unused))
     return Py_NewRef(alias->parameters);
 }
 
-static PyGetSetDef union_properties[] = {
-    {"__parameters__", union_parameters, (setter)NULL,
-     PyDoc_STR("Type variables in the types.UnionType."), NULL},
+static PyGetSetDef intersection_properties[] = {
+    {"__parameters__", intersection_parameters, (setter)NULL,
+     PyDoc_STR("Type variables in the types.IntersectionType."), NULL},
     {0}
 };
 
-static PyNumberMethods union_as_number = {
+static PyNumberMethods intersection_as_number = {
         .nb_and = _Py_intersection_type_and, // Add __and__ function
         .nb_or = _Py_union_type_or, // Add __or__ function
 };
@@ -351,9 +351,9 @@ static const char* const cls_attrs[] = {
 };
 
 static PyObject *
-union_getattro(PyObject *self, PyObject *name)
+intersection_getattro(PyObject *self, PyObject *name)
 {
-    unionobject *alias = (unionobject *)self;
+    intersectionobject *alias = (intersectionobject *)self;
     if (PyUnicode_Check(name)) {
         for (const char * const *p = cls_attrs; ; p++) {
             if (*p == NULL) {
@@ -368,40 +368,40 @@ union_getattro(PyObject *self, PyObject *name)
 }
 
 PyObject *
-_Py_union_args(PyObject *self)
+_Py_intersection_args(PyObject *self)
 {
-    assert(_PyUnion_Check(self));
-    return ((unionobject *) self)->args;
+    assert(_PyIntersection_Check(self));
+    return ((intersectionobject *) self)->args;
 }
 
-PyTypeObject _PyUnion_Type = {
+PyTypeObject _PyIntersection_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
-    .tp_name = "types.UnionType",
-    .tp_doc = PyDoc_STR("Represent a PEP 604 union type\n"
+    .tp_name = "types.IntersectionType",
+    .tp_doc = PyDoc_STR("Represent a PEP XYZ Intersection type\n"
               "\n"
-              "E.g. for int | str"),
-    .tp_basicsize = sizeof(unionobject),
-    .tp_dealloc = unionobject_dealloc,
+              "E.g. for int & str"),
+    .tp_basicsize = sizeof(intersectionobject),
+    .tp_dealloc = intersectionobject_dealloc,
     .tp_alloc = PyType_GenericAlloc,
     .tp_free = PyObject_GC_Del,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .tp_traverse = union_traverse,
-    .tp_hash = union_hash,
-    .tp_getattro = union_getattro,
-    .tp_members = union_members,
-    .tp_richcompare = union_richcompare,
-    .tp_as_mapping = &union_as_mapping,
-    .tp_as_number = &union_as_number,
-    .tp_repr = union_repr,
-    .tp_getset = union_properties,
+    .tp_traverse = intersection_traverse,
+    .tp_hash = intersection_hash,
+    .tp_getattro = intersection_getattro,
+    .tp_members = intersection_members,
+    .tp_richcompare = intersection_richcompare,
+    .tp_as_mapping = &intersection_as_mapping,
+    .tp_as_number = &intersection_as_number,
+    .tp_repr = intersection_repr,
+    .tp_getset = intersection_properties,
 };
 
 static PyObject *
-make_union(PyObject *args)
+make_intersection(PyObject *args)
 {
     assert(PyTuple_CheckExact(args));
 
-    unionobject *result = PyObject_GC_New(unionobject, &_PyUnion_Type);
+    intersectionobject *result = PyObject_GC_New(intersectionobject, &_PyIntersection_Type);
     if (result == NULL) {
         return NULL;
     }

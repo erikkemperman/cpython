@@ -10,6 +10,7 @@ extern "C" {
 
 // For extensions created by test_peg_generator
 PyAPI_DATA(PyTypeObject) _PyUnion_Type;
+// PyAPI_FUNC(PyObject *) _Py_union_type_and(PyObject *, PyObject *);
 PyAPI_FUNC(PyObject *) _Py_union_type_or(PyObject *, PyObject *);
 
 #define _PyUnion_Check(op) Py_IS_TYPE((op), &_PyUnion_Type)

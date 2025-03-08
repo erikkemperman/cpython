@@ -47,5 +47,7 @@ def nodoc_func():
 list_alias1 = typing.List[int]
 list_alias2 = list[int]
 c_alias = C[int]
+type_intersection1 = typing.Intersection[int, str]
+type_intersection2 = int & str
 type_union1 = typing.Union[int, str]
 type_union2 = int | str

@@ -186,6 +186,10 @@ class ThreadTests(BaseTestCase):
         with self.assertRaises(TypeError):
             class MyLock(threading.Lock): pass
 
+    def test_lock_and_none(self):
+        import types
+        self.assertIsInstance(threading.Lock & None, types.IntersectionType)
+
     def test_lock_or_none(self):
         import types
         self.assertIsInstance(threading.Lock | None, types.UnionType)
