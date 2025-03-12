@@ -1592,6 +1592,9 @@
     <ClCompile Include="..\Objects\unionobject.c">
       <Filter>Objects</Filter>
     </ClCompile>
+    <ClCompile Include="..\Objects\intersectionobject.c">
+      <Filter>Objects</Filter>
+    </ClCompile>
     <ClCompile Include="..\Python\frame.c">
       <Filter>Python</Filter>
     </ClCompile>
